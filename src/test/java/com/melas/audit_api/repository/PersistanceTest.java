@@ -55,6 +55,7 @@ class PersistanceTest {
 				.build();
 
 		Document devis = Document.builder()
+				.id(UUID.randomUUID())
 				.typeDocument("devis")
 				.nomFichierOriginal("devis_plombier.pdf")
 				.contentType("application/pdf")
@@ -175,6 +176,40 @@ class PersistanceTest {
 				.setParameter("id", documentId).getSingleResult();
 		assertThat(documents.longValue()).isZero();
 		assertThat(champs.longValue()).isZero();
+	}
+
+	@Test
+	void unDocumentEnregistreNEstPlusConsidereCommeNouveau() {
+		Dossier dossier = dossierAvecUnDocumentEtDeuxChamps("dossier_005");
+		Document document = dossier.getDocuments().getFirst();
+		assertThat(document.isNew()).isTrue();
+
+		dossierRepository.save(dossier);
+		viderContexte();
+
+		assertThat(document.isNew()).isFalse();
+		assertThat(documentRepository.findById(document.getId()).orElseThrow().isNew()).isFalse();
+	}
+
+	@Test
+	void laBaseRejetteLeMemeFichierDeuxFoisDansUnDossier() {
+		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_006"));
+		viderContexte();
+
+		Dossier relu = dossierRepository.findById(dossier.getId()).orElseThrow();
+		Document copie = Document.builder()
+				.id(UUID.randomUUID())
+				.nomFichierOriginal("copie.pdf")
+				.contentType("application/pdf")
+				.tailleOctets(245_000)
+				.cleStockage("dossiers/copie.pdf")
+				.empreinteSha256(EMPREINTE)
+				.build();
+		relu.ajouterDocument(copie);
+
+		assertThatThrownBy(() -> documentRepository.saveAndFlush(copie))
+				.isInstanceOf(DataIntegrityViolationException.class)
+				.hasMessageContaining("uk_document_dossier_empreinte");
 	}
 
 	@Test

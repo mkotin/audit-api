@@ -6,11 +6,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import org.hibernate.Hibernate;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.data.domain.Persistable;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -18,13 +20,14 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -34,11 +37,19 @@ import lombok.NoArgsConstructor;
 @Table(name = "document")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Document {
+public class Document implements Persistable<UUID> {
 
+	/**
+	 * Assigné par l'application avant l'enregistrement : la clé de stockage du fichier en dépend,
+	 * et le fichier est écrit avant la ligne en base.
+	 */
 	@Id
-	@GeneratedValue(strategy = GenerationType.UUID)
 	private UUID id;
+
+	/** Indique à Spring Data qu'il faut un persist (et non un merge) malgré l'id déjà renseigné. */
+	@Transient
+	@Getter(AccessLevel.NONE)
+	private boolean nouveau = true;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "dossier_id", nullable = false)
@@ -85,8 +96,9 @@ public class Document {
 	private List<ChampExtrait> champs = new ArrayList<>();
 
 	@Builder
-	private Document(String typeDocument, String nomFichierOriginal, String contentType, long tailleOctets,
+	private Document(UUID id, String typeDocument, String nomFichierOriginal, String contentType, long tailleOctets,
 			String cleStockage, String empreinteSha256, Integer nombrePages) {
+		this.id = Objects.requireNonNull(id, "id");
 		this.typeDocument = typeDocument;
 		this.nomFichierOriginal = Objects.requireNonNull(nomFichierOriginal, "nomFichierOriginal");
 		this.contentType = Objects.requireNonNull(contentType, "contentType");
@@ -95,6 +107,17 @@ public class Document {
 		this.empreinteSha256 = Objects.requireNonNull(empreinteSha256, "empreinteSha256").toLowerCase(Locale.ROOT);
 		this.nombrePages = nombrePages;
 		this.statut = StatutDocument.RECU;
+	}
+
+	@Override
+	public boolean isNew() {
+		return nouveau;
+	}
+
+	@PostPersist
+	@PostLoad
+	void marquerPersiste() {
+		this.nouveau = false;
 	}
 
 	/** Appelé uniquement par {@link Dossier#ajouterDocument} pour maintenir les deux côtés de la relation. */
@@ -124,6 +147,16 @@ public class Document {
 
 	public void definirNombrePages(Integer nombrePages) {
 		this.nombrePages = nombrePages;
+	}
+
+	/**
+	 * Un document ne peut être supprimé que s'il n'est pas pris en charge par le traitement : reçu, ou en erreur.
+	 * En cours de traitement ou déjà extrait, ses résultats font foi et il doit être conservé.
+	 */
+	public static final Set<StatutDocument> STATUTS_SUPPRIMABLES = Set.of(StatutDocument.RECU, StatutDocument.ERREUR);
+
+	public boolean estSupprimable() {
+		return STATUTS_SUPPRIMABLES.contains(statut);
 	}
 
 	// --- Transitions de statut ---

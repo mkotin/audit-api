@@ -4,7 +4,7 @@ Backend de la plateforme d'audit de dossiers : réception des documents (PDF, im
 
 ## Stack
 
-Java 21 · Spring Boot 4 · Spring Data JPA · PostgreSQL 17 · Flyway · Testcontainers
+Java 21 · Spring Boot 4 · Spring Data JPA · PostgreSQL 17 · Flyway · stockage objet S3 (SDK AWS v2) · Testcontainers
 
 ## Prérequis
 
@@ -24,9 +24,14 @@ code/
 ./mvnw spring-boot:run
 ```
 
-La base PostgreSQL définie dans `../audit-infra/compose.yaml` est démarrée automatiquement, puis les migrations Flyway sont appliquées. La base reste active à l'arrêt de l'application.
+`spring-boot:run` active le profil **`dev`** (configuré dans le `spring-boot-maven-plugin` du `pom.xml`, sans effet sur le jar packagé). Ce profil charge `application-dev.properties` et active les endpoints d'administration (voir plus bas). Depuis un IDE, l'activer avec la variable d'environnement `SPRING_PROFILES_ACTIVE=dev`, en lançant `AuditApiApplication` avec `audit-api` comme répertoire de travail (le compose est référencé en relatif). Sans ce profil — en particulier dans les tests et en production — l'administration n'existe pas.
 
-Pour réinitialiser la base :
+Les services définis dans `../audit-infra/compose.yaml` (PostgreSQL, stockage S3) sont démarrés automatiquement, puis les migrations Flyway sont appliquées et le bucket `documents` est créé s'il n'existe pas. Les services restent actifs à l'arrêt de l'application.
+
+- Swagger UI : http://localhost:8080/swagger-ui.html
+- Console du stockage S3 : http://localhost:9001 (`audit-s3` / `audit-s3-secret`)
+
+Pour réinitialiser la base et les fichiers :
 
 ```bash
 cd ../audit-infra
@@ -39,7 +44,20 @@ docker compose --profile infra down -v
 ./mvnw test
 ```
 
-Les tests utilisent leur propre PostgreSQL via Testcontainers ; Docker doit être lancé.
+Les tests utilisent leur propre PostgreSQL et leur propre stockage S3 via Testcontainers ; Docker doit être lancé.
+
+## Documents
+
+- `POST /api/dossiers` : crée un dossier ; `GET /api/dossiers/{id}` et `GET /api/dossiers?reference=…` le relisent avec ses documents.
+- `POST /api/dossiers/{id}/documents` (multipart, champ `fichiers`) : dépose un ou plusieurs fichiers.
+- `GET /api/documents/{id}` : métadonnées ; `GET /api/documents/{id}/fichier` : téléchargement.
+- `DELETE /api/documents/{id}` : supprime un document au statut `RECU` ou `ERREUR` (204) ; un document `EN_COURS` ou `EXTRAIT` est conservé (409). La ligne est supprimée en base, puis le fichier dans le stockage ; si ce dernier échoue, la suppression reste acquise et la clé du fichier orphelin est loguée en erreur.
+
+Règles du dépôt : PDF, JPEG, PNG ou TIFF, type déterminé d'après le contenu (sinon 415) ; 20 Mo par fichier et 100 Mo par requête (413) ; fichier vide refusé (400) ; un même contenu (empreinte SHA-256) ne peut figurer qu'une fois par dossier (409). Le dépôt est atomique : si un fichier est refusé, rien n'est créé.
+
+Administration (profil `dev` uniquement) : `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
+
+Les fichiers sont stockés hors base, sous la clé `dossiers/{dossierId}/{documentId}.{extension}` ; la base ne contient que leurs métadonnées. Le code ne dépend que de l'interface `StockageFichiers` et de l'API S3 (configuration `app.stockage.*`).
 
 ## Migrations
 

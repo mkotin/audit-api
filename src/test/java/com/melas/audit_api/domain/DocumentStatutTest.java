@@ -3,12 +3,15 @@ package com.melas.audit_api.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.Test;
 
 class DocumentStatutTest {
 
 	private static Document nouveauDocument() {
 		return Document.builder()
+				.id(UUID.randomUUID())
 				.nomFichierOriginal("devis.pdf")
 				.contentType("application/pdf")
 				.tailleOctets(1024)
@@ -98,6 +101,7 @@ class DocumentStatutTest {
 	@Test
 	void lEmpreinteEstNormaliseeEnMinuscules() {
 		Document document = Document.builder()
+				.id(UUID.randomUUID())
 				.nomFichierOriginal("f.pdf")
 				.contentType("application/pdf")
 				.cleStockage("k")
@@ -108,8 +112,41 @@ class DocumentStatutTest {
 	}
 
 	@Test
-	void deuxEntitesNonPersisteesNeSontPasEgales() {
+	void deuxDocumentsDIdentifiantsDifferentsNeSontPasEgaux() {
 		assertThat(nouveauDocument()).isNotEqualTo(nouveauDocument());
+	}
+
+	@Test
+	void lIdentifiantEstObligatoire() {
+		assertThatThrownBy(() -> Document.builder()
+				.nomFichierOriginal("f.pdf")
+				.contentType("application/pdf")
+				.cleStockage("k")
+				.empreinteSha256("a".repeat(64))
+				.build())
+				.isInstanceOf(NullPointerException.class)
+				.hasMessage("id");
+	}
+
+	@Test
+	void seulsLesDocumentsRecusOuEnErreurSontSupprimables() {
+		Document document = nouveauDocument();
+		assertThat(document.estSupprimable()).as("RECU").isTrue();
+
+		document.demarrerTraitement();
+		assertThat(document.estSupprimable()).as("EN_COURS").isFalse();
+
+		document.marquerErreur("OCR illisible");
+		assertThat(document.estSupprimable()).as("ERREUR").isTrue();
+
+		document.demarrerTraitement();
+		document.marquerExtrait();
+		assertThat(document.estSupprimable()).as("EXTRAIT").isFalse();
+	}
+
+	@Test
+	void unNouveauDocumentEstAPersister() {
+		assertThat(nouveauDocument().isNew()).isTrue();
 	}
 
 }
