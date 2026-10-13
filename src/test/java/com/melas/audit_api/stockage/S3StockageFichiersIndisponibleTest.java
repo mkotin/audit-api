@@ -30,7 +30,7 @@ class S3StockageFichiersIndisponibleTest {
 
 	private final S3StockageFichiers stockage = new S3StockageFichiers(s3,
 			S3Presigner.builder().region(Region.US_EAST_1).build(),
-			new StockageProperties(ENDPOINT_FERME, "us-east-1", "a", "s", "documents", true, false,
+			new StockageProperties(ENDPOINT_FERME, null, "us-east-1", "a", "s", "documents", true, false,
 					Duration.ofMinutes(1)));
 
 	@AfterEach

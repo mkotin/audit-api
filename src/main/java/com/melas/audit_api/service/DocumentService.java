@@ -24,6 +24,7 @@ import com.melas.audit_api.repository.DocumentRepository;
 import com.melas.audit_api.repository.DossierRepository;
 import com.melas.audit_api.stockage.StockageException;
 import com.melas.audit_api.stockage.StockageFichiers;
+import com.melas.audit_api.stockage.UrlTemporaire;
 
 /**
  * Dépôt et consultation des documents d'un dossier.
@@ -63,6 +64,15 @@ public class DocumentService {
 	/** Ouvre le fichier d'un document ; l'appelant doit fermer le flux. */
 	public InputStream lireFichier(Document document) {
 		return stockage.lire(document.getCleStockage());
+	}
+
+	/**
+	 * URL signée donnant un accès temporaire au fichier du document, sans identifiants.
+	 *
+	 * @throws DocumentIntrouvableException si le document n'existe pas
+	 */
+	public UrlTemporaire genererUrlTemporaire(UUID id) {
+		return stockage.genererUrlTemporaire(trouver(id).getCleStockage());
 	}
 
 	/**

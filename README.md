@@ -55,9 +55,41 @@ Les tests utilisent leur propre PostgreSQL et leur propre stockage S3 via Testco
 
 Règles du dépôt : PDF, JPEG, PNG ou TIFF, type déterminé d'après le contenu (sinon 415) ; 20 Mo par fichier et 100 Mo par requête (413) ; fichier vide refusé (400) ; un même contenu (empreinte SHA-256) ne peut figurer qu'une fois par dossier (409). Le dépôt est atomique : si un fichier est refusé, rien n'est créé.
 
-Administration (profil `dev` uniquement) : `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
+Administration et développement (profil `dev` uniquement) :
+
+- `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
+- `GET /api/admin/documents/{id}/url-temporaire` renvoie l'URL signée du fichier et son expiration : `{"url": "…", "expireA": "2026-10-13T11:02:00Z"}`, ou 404 si le document n'existe pas. Il sert à tester audit-core à la main, en attendant l'orchestration :
+
+  ```bash
+  URL=$(curl -s http://localhost:8080/api/admin/documents/<id>/url-temporaire | jq -r .url)
+  curl -s -X POST http://localhost:8000/v1/ocr -H "Content-Type: application/json" -d "{\"url\": \"$URL\"}"
+  ```
 
 Les fichiers sont stockés hors base, sous la clé `dossiers/{dossierId}/{documentId}.{extension}` ; la base ne contient que leurs métadonnées. Le code ne dépend que de l'interface `StockageFichiers` et de l'API S3 (configuration `app.stockage.*`).
+
+## Adresse des URL signées
+
+Les URL signées (durée `app.stockage.duree-url-temporaire`, 15 min par défaut) permettent à audit-core de télécharger un document sans identifiants S3. Leur adresse pose une contrainte : **la signature couvre l'hôte**. audit-core ne peut donc pas réécrire l'adresse : elle doit être, dès la signature, celle par laquelle audit-core joint le stockage.
+
+Deux propriétés distinguent les deux usages :
+
+| Propriété                      | Utilisée par                                    | Rôle                                                        |
+|--------------------------------|-------------------------------------------------|-------------------------------------------------------------|
+| `app.stockage.endpoint`        | `S3Client` (dépôt, lecture, suppression…)       | adresse du stockage vue par audit-api                       |
+| `app.stockage.endpoint-public` | `S3Presigner` uniquement                        | adresse placée dans les URL signées ; à défaut, `endpoint`  |
+
+Selon l'endroit où tournent les services :
+
+- **audit-api sur la machine, audit-core dans Docker** (développement, profil `dev`) : `endpoint` vaut `http://localhost:9000` et `endpoint-public` vaut `http://host.docker.internal:9000`. Cette dernière valeur est définie dans `application-dev.properties` : `localhost` désignerait le conteneur d'audit-core lui-même.
+- **Tout dans Docker** (futur service compose d'audit-api) : les deux adresses valent `http://stockage-s3:9000`, le nom du service dans le réseau compose. Elles se passent par variables d'environnement dans le service compose d'audit-api :
+
+  ```yaml
+  environment:
+    APP_STOCKAGE_ENDPOINT: http://stockage-s3:9000
+    APP_STOCKAGE_ENDPOINT_PUBLIC: http://stockage-s3:9000
+  ```
+
+L'hôte et le port de `endpoint-public` doivent figurer dans `CORE_HOTES_AUTORISES` côté audit-core. `host.docker.internal:9000` et `stockage-s3:9000` y sont par défaut.
 
 ## Migrations
 

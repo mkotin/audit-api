@@ -195,7 +195,7 @@ class DocumentApiTest extends ApiTestSupport {
 		String documentId = JsonPath.read(deposer(dossierId, pdf()).getBody(), "$[0].id");
 		String cle = documentRepository.findById(UUID.fromString(documentId)).orElseThrow().getCleStockage();
 
-		URL url = stockage.genererUrlTemporaire(cle);
+		URL url = stockage.genererUrlTemporaire(cle).url();
 
 		assertThat(url.getQuery()).contains("X-Amz-Signature").contains("X-Amz-Expires=900");
 		try (InputStream contenu = url.openStream()) {

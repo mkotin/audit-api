@@ -31,10 +31,11 @@ class StockageConfiguration {
 				.build();
 	}
 
+	/** Signe les URL avec l'adresse publique : celle par laquelle leurs destinataires joignent le stockage. */
 	@Bean(destroyMethod = "close")
 	S3Presigner s3Presigner(StockageProperties proprietes) {
 		return S3Presigner.builder()
-				.endpointOverride(proprietes.endpoint())
+				.endpointOverride(proprietes.endpointPresigner())
 				.region(Region.of(proprietes.region()))
 				.credentialsProvider(identifiants(proprietes))
 				.serviceConfiguration(S3Configuration.builder()

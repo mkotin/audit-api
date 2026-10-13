@@ -1,7 +1,6 @@
 package com.melas.audit_api.stockage;
 
 import java.io.InputStream;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -19,6 +18,7 @@ import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 /** Stockage dans un bucket S3 (AWS ou tout stockage compatible). */
 @Component
@@ -107,11 +107,11 @@ class S3StockageFichiers implements StockageFichiers {
 	}
 
 	@Override
-	public URL genererUrlTemporaire(String cle) {
-		return presigner.presignGetObject(signature -> signature
+	public UrlTemporaire genererUrlTemporaire(String cle) {
+		PresignedGetObjectRequest signee = presigner.presignGetObject(signature -> signature
 				.signatureDuration(proprietes.dureeUrlTemporaire())
-				.getObjectRequest(requete -> requete.bucket(proprietes.bucket()).key(cle)))
-				.url();
+				.getObjectRequest(requete -> requete.bucket(proprietes.bucket()).key(cle)));
+		return new UrlTemporaire(signee.url(), signee.expiration());
 	}
 
 	private <T> T executer(String operation, String cle, Supplier<T> appel) {

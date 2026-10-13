@@ -1,7 +1,6 @@
 package com.melas.audit_api.stockage;
 
 import java.io.InputStream;
-import java.net.URL;
 
 /**
  * Stockage des fichiers déposés, hors base de données. Le reste de l'application ne dépend que de cette interface.
@@ -31,6 +30,6 @@ public interface StockageFichiers {
 	int supprimerParPrefixe(String prefixe);
 
 	/** URL signée donnant un accès en lecture temporaire au fichier, sans identifiants. */
-	URL genererUrlTemporaire(String cle);
+	UrlTemporaire genererUrlTemporaire(String cle);
 
 }
