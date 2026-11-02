@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,14 +47,17 @@ public class DocumentService {
 	private final StockageFichiers stockage;
 	private final DetecteurTypeFichier detecteur;
 	private final TransactionTemplate transaction;
+	private final ApplicationEventPublisher evenements;
 
 	public DocumentService(DossierRepository dossierRepository, DocumentRepository documentRepository,
-			StockageFichiers stockage, DetecteurTypeFichier detecteur, TransactionTemplate transaction) {
+			StockageFichiers stockage, DetecteurTypeFichier detecteur, TransactionTemplate transaction,
+			ApplicationEventPublisher evenements) {
 		this.dossierRepository = dossierRepository;
 		this.documentRepository = documentRepository;
 		this.stockage = stockage;
 		this.detecteur = detecteur;
 		this.transaction = transaction;
+		this.evenements = evenements;
 	}
 
 	@Transactional(readOnly = true)
@@ -76,14 +80,15 @@ public class DocumentService {
 	}
 
 	/**
-	 * Supprime un document reçu ou en erreur : la ligne en base d'abord, puis le fichier. Si le fichier ne peut
-	 * pas être supprimé, la suppression en base reste acquise et le fichier orphelin est signalé dans les logs.
+	 * Supprime un document reçu ou en erreur : la ligne en base d'abord (avec, par cascade, ses passages de
+	 * traitement), puis le fichier et les résultats de traitement conservés dans le stockage. Si le stockage échoue,
+	 * la suppression en base reste acquise et les fichiers orphelins sont signalés dans les logs.
 	 *
 	 * @throws DocumentIntrouvableException si le document n'existe pas
 	 * @throws DocumentNonSupprimableException s'il est en cours de traitement ou déjà extrait
 	 */
 	public void supprimer(UUID id) {
-		String cle = transaction.execute(statut -> {
+		Document supprime = transaction.execute(statut -> {
 			Document document = documentRepository.findById(id).orElseThrow(() -> new DocumentIntrouvableException(id));
 			if (!document.estSupprimable()) {
 				throw new DocumentNonSupprimableException(id, document.getStatut());
@@ -94,13 +99,22 @@ public class DocumentService {
 				Document relu = documentRepository.findById(id).orElseThrow(() -> new DocumentIntrouvableException(id));
 				throw new DocumentNonSupprimableException(id, relu.getStatut());
 			}
-			return document.getCleStockage();
+			return document;
 		});
+		String cle = supprime.getCleStockage();
 		try {
 			stockage.supprimer(cle);
 		}
 		catch (StockageException e) {
 			log.error("Fichier orphelin dans le stockage : clé {} (document {} supprimé en base)", cle, id, e);
+		}
+		String prefixe = CleStockage.prefixeDocument(supprime.getDossier().getId(), id);
+		try {
+			stockage.supprimerParPrefixe(prefixe);
+		}
+		catch (StockageException e) {
+			log.error("Résultats de traitement orphelins dans le stockage sous {} (document {} supprimé en base)",
+					prefixe, id, e);
 		}
 	}
 
@@ -108,6 +122,8 @@ public class DocumentService {
 	 * Dépose les fichiers dans le dossier. Tous les fichiers sont validés (non vides, type accepté) avant la
 	 * moindre écriture ; les doublons (même contenu déjà présent dans le dossier ou répété dans la requête)
 	 * sont détectés après écriture, l'empreinte étant calculée pendant le transfert.
+	 *
+	 * <p>Après la validation en base, un événement {@link DocumentDepose} par document déclenche son traitement.
 	 *
 	 * @return les documents créés, au statut RECU, dans l'ordre des fichiers reçus
 	 */
@@ -188,7 +204,9 @@ public class DocumentService {
 				Dossier dossier = dossierRepository.findById(dossierId)
 						.orElseThrow(() -> new DossierIntrouvableException(dossierId));
 				documents.forEach(dossier::ajouterDocument);
-				return documentRepository.saveAllAndFlush(documents);
+				List<Document> enregistres = documentRepository.saveAllAndFlush(documents);
+				enregistres.forEach(document -> evenements.publishEvent(new DocumentDepose(document.getId())));
+				return enregistres;
 			});
 		}
 		catch (DataIntegrityViolationException e) {

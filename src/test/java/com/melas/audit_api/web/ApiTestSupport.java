@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
@@ -33,9 +34,13 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 /**
  * Base des tests de l'API : vrai serveur HTTP (les limites de taille multipart ne s'appliquent qu'avec Tomcat),
  * PostgreSQL et stockage S3 dans des conteneurs.
+ *
+ * <p>Le traitement automatique des documents est désactivé : les documents déposés restent RECU, et les tests
+ * peuvent fixer eux-mêmes leur statut. Les tests du traitement (TraitementTestSupport) le réactivent.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)
+@TestPropertySource(properties = "app.traitement.automatique=false")
 public abstract class ApiTestSupport {
 
 	@LocalServerPort

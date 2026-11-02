@@ -19,7 +19,12 @@ import org.springframework.test.context.ActiveProfiles;
 import com.jayway.jsonpath.JsonPath;
 import com.melas.audit_api.domain.ChampExtrait;
 import com.melas.audit_api.domain.Document;
+import com.melas.audit_api.domain.Extraction;
+import com.melas.audit_api.domain.ResultatOcr;
 import com.melas.audit_api.repository.ChampExtraitRepository;
+import com.melas.audit_api.repository.ExtractionRepository;
+import com.melas.audit_api.repository.ResultatOcrRepository;
+import com.melas.audit_api.service.CleStockage;
 import com.melas.audit_api.web.ApiTestSupport;
 
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -29,6 +34,12 @@ class AdminDossierTest extends ApiTestSupport {
 
 	@Autowired
 	private ChampExtraitRepository champExtraitRepository;
+
+	@Autowired
+	private ResultatOcrRepository resultatOcrRepository;
+
+	@Autowired
+	private ExtractionRepository extractionRepository;
 
 	private HttpStatusCode supprimerDossier(String dossierId) {
 		return client.delete().uri("/api/admin/dossiers/{id}", dossierId).retrieve().toBodilessEntity().getStatusCode();
@@ -52,14 +63,42 @@ class AdminDossierTest extends ApiTestSupport {
 		String enCours = documentIds.get(1);
 		String extrait = documentIds.get(2);
 		modifierDocument(enCours, Document::demarrerTraitement);
+		// Document extrait : un passage d'OCR (avec son JSON dans le stockage) et un passage d'extraction d'un champ
+		UUID resultatOcrId = UUID.randomUUID();
+		String cleOcr = CleStockage.ocr(UUID.fromString(dossierId), UUID.fromString(extrait), resultatOcrId);
+		s3.putObject(requete -> requete.bucket(proprietesStockage.bucket()).key(cleOcr), RequestBody.fromString("{}"));
 		modifierDocument(extrait, document -> {
 			document.demarrerTraitement();
-			document.ajouterChamp(ChampExtrait.builder()
+			ResultatOcr ocr = resultatOcrRepository.save(ResultatOcr.builder()
+					.id(resultatOcrId)
+					.document(document)
+					.cleStockage(cleOcr)
+					.versionService("0.1.0")
+					.typeFichier("pdf")
+					.methodeGlobale("natif")
+					.nombrePages(1)
+					.build());
+			Extraction extraction = Extraction.builder()
+					.id(UUID.randomUUID())
+					.document(document)
+					.resultatOcr(ocr)
+					.cleStockage(CleStockage.extraction(UUID.fromString(dossierId), document.getId(), UUID.randomUUID()))
+					.typeDocument("rapport_expert")
+					.confiance(0.97)
+					.modele("beam")
+					.fournisseur("ollama")
+					.versionConsigne("1")
+					.empreinteConsigne("a".repeat(64))
+					.versionDomaine("1.3")
+					.empreinteDomaine("b".repeat(64))
+					.build();
+			extraction.ajouterChamp(ChampExtrait.builder()
 					.nom("total_ttc")
 					.valeurBrute("1 451,00 €")
 					.confiance(new BigDecimal("0.970"))
 					.extraitPar("test")
 					.build());
+			extractionRepository.save(extraction);
 			document.marquerExtrait();
 		});
 		assertThat(champExtraitRepository.findByDocumentId(UUID.fromString(extrait))).hasSize(1);
@@ -68,7 +107,7 @@ class AdminDossierTest extends ApiTestSupport {
 		String orphelin = "dossiers/%s/%s.pdf".formatted(dossierId, UUID.randomUUID());
 		s3.putObject(requete -> requete.bucket(proprietesStockage.bucket()).key(orphelin),
 				RequestBody.fromString("orphelin"));
-		assertThat(clesStockees(dossierId)).hasSize(4);
+		assertThat(clesStockees(dossierId)).hasSize(5);
 
 		// Un autre dossier ne doit pas être touché.
 		String autreDossierId = creerDossierEtRenvoyerId();
@@ -83,6 +122,7 @@ class AdminDossierTest extends ApiTestSupport {
 					.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 		}
 		assertThat(champExtraitRepository.findByDocumentId(UUID.fromString(extrait))).isEmpty();
+		assertThat(resultatOcrRepository.findById(resultatOcrId)).isEmpty();
 		assertThat(clesStockees(dossierId)).isEmpty();
 
 		assertThat(clesStockees(autreDossierId)).hasSize(1);

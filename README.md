@@ -1,6 +1,6 @@
 # audit-api
 
-Backend de la plateforme d'audit de dossiers : réception des documents (PDF, images) et stockage des champs extraits par le service OCR/LLM.
+Backend de la plateforme d'audit de dossiers : réception des documents (PDF, images), orchestration de leur traitement par [`audit-core`](../audit-core) (OCR, classification, extraction des champs) et enregistrement des résultats.
 
 ## Stack
 
@@ -44,28 +44,57 @@ docker compose --profile infra down -v
 ./mvnw test
 ```
 
-Les tests utilisent leur propre PostgreSQL et leur propre stockage S3 via Testcontainers ; Docker doit être lancé.
+Les tests utilisent leur propre PostgreSQL et leur propre stockage S3 via Testcontainers ; Docker doit être lancé. audit-core est simulé par WireMock, avec de vraies réponses d'audit-core capturées sur la facture `dossier_001_doc03` du jeu de test (`src/test/resources/core`).
+
+## Image Docker
+
+Le `Dockerfile` (multi-étapes : construction Maven, puis JRE seul, utilisateur non root) est utilisé par le service `api` du profil `full` d'audit-infra : `docker compose --profile full up -d --build` depuis `../audit-infra` lance tout le système.
 
 ## Documents
 
 - `POST /api/dossiers` : crée un dossier ; `GET /api/dossiers/{id}` et `GET /api/dossiers?reference=…` le relisent avec ses documents.
 - `POST /api/dossiers/{id}/documents` (multipart, champ `fichiers`) : dépose un ou plusieurs fichiers.
-- `GET /api/documents/{id}` : métadonnées ; `GET /api/documents/{id}/fichier` : téléchargement.
-- `DELETE /api/documents/{id}` : supprime un document au statut `RECU` ou `ERREUR` (204) ; un document `EN_COURS` ou `EXTRAIT` est conservé (409). La ligne est supprimée en base, puis le fichier dans le stockage ; si ce dernier échoue, la suppression reste acquise et la clé du fichier orphelin est loguée en erreur.
+- `GET /api/documents/{id}` : métadonnées et état du traitement (statut, message d'erreur, type détecté, confiance de la classification, dates des derniers passages) ; `GET /api/documents/{id}/fichier` : téléchargement.
+- `DELETE /api/documents/{id}` : supprime un document au statut `RECU` ou `ERREUR` (204) ; un document `EN_COURS` ou `EXTRAIT` est conservé (409). La ligne est supprimée en base (avec ses passages de traitement), puis le fichier et les résultats de traitement dans le stockage ; si ce dernier échoue, la suppression reste acquise et les clés orphelines sont loguées en erreur.
 
 Règles du dépôt : PDF, JPEG, PNG ou TIFF, type déterminé d'après le contenu (sinon 415) ; 20 Mo par fichier et 100 Mo par requête (413) ; fichier vide refusé (400) ; un même contenu (empreinte SHA-256) ne peut figurer qu'une fois par dossier (409). Le dépôt est atomique : si un fichier est refusé, rien n'est créé.
 
-Administration et développement (profil `dev` uniquement) :
+## Traitement des documents
+
+Après chaque dépôt, une fois celui-ci validé en base, chaque document est traité en arrière-plan ; l'upload répond immédiatement, document au statut `RECU`. Le traitement appelle successivement audit-core :
+
+1. `RECU` → `EN_COURS` ;
+2. `POST /v1/ocr` avec une URL signée du fichier ; la réponse complète est conservée dans le stockage (`dossiers/{dossierId}/{documentId}/ocr/{resultatOcrId}.json`) et référencée par un `ResultatOcr` ;
+3. `POST /v1/classification` : une `Classification`, et le type recopié dans le document. Type `inconnu` : `ERREUR` (« Type de document non reconnu »), sans extraction. Confiance sous `app.traitement.seuil-classification` (0,5) : extraction faite quand même, avec l'alerte `classification_peu_fiable` ;
+4. `POST /v1/extraction` : une `Extraction` (réponse complète conservée sous `…/extraction/{extractionId}.json`) et un `ChampExtrait` par champ de la provenance, nommé par son chemin (`total_ttc`, `lignes[2].montant_ht`) ;
+5. `EN_COURS` → `EXTRAIT`.
+
+Chaque étape enregistre son résultat dans sa propre transaction, jamais ouverte pendant un appel HTTP. En cas d'échec, le document passe en `ERREUR` avec un message sans détail technique (« OCR impossible : PDF illisible ou corrompu », « Classification impossible : LLM non configuré »…), et les résultats déjà obtenus sont conservés. Chaque passage est gardé : le plus récent fait foi.
+
+Chaque traitement reçoit un identifiant de corrélation, présent dans les logs (`[…]` après le nom du thread) et transmis à audit-core dans `X-Request-ID`, qu'audit-core reprend dans ses propres logs.
+
+- `POST /api/documents/{id}/traitement` : relance le traitement complet d'un document reçu, en erreur ou extrait (202, document `EN_COURS`) ; 409 si un traitement est en cours.
+- `POST /api/documents/{id}/extraction` : relance seulement l'extraction, à partir du dernier résultat d'OCR et du type connu (202) ; 409 si un traitement est en cours, sans résultat d'OCR ou sans type reconnu.
+- `GET /api/documents/{id}/champs` : champs de la dernière extraction (valeur brute et normalisée, confiance, page, zone, alertes), avec les alertes et la confiance globale du document ; 404 s'il n'a jamais été extrait.
+
+Exécution : `app.traitement.parallelisme` documents à la fois (2), file de `app.traitement.taille-file` documents (100). File pleine : après un dépôt, le document reste `RECU` (signalé dans les logs) ; pour une relance, réponse 503 et document en `ERREUR`, à relancer plus tard. Au démarrage, les documents restés `EN_COURS` (application arrêtée pendant leur traitement) passent en `ERREUR` (« Traitement interrompu ») et les documents `RECU` sont remis en file. Cette reprise suppose une seule instance d'audit-api.
+
+audit-core est joint à `app.core.url` (`http://localhost:8000`), avec les délais `app.core.delai-connexion` (5 s) et `app.core.delai-lecture` (5 min : OCR d'un scan, appels au LLM). La classification et l'extraction demandent un LLM configuré côté audit-core (`CORE_LLM_MODELE`, voir le README d'audit-infra). `app.traitement.automatique=false` désactive le traitement après dépôt et la reprise (les relances restent possibles).
+
+## Administration et développement
+
+Profil `dev` uniquement :
 
 - `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
-- `GET /api/admin/documents/{id}/url-temporaire` renvoie l'URL signée du fichier et son expiration : `{"url": "…", "expireA": "2026-10-13T11:02:00Z"}`, ou 404 si le document n'existe pas. Il sert à tester audit-core à la main, en attendant l'orchestration :
+- `GET /api/admin/documents/{id}/ocr` et `GET /api/admin/documents/{id}/extraction` renvoient le JSON complet du dernier OCR et de la dernière extraction, tel qu'audit-core l'a produit ; 404 s'il n'y en a pas.
+- `GET /api/admin/documents/{id}/url-temporaire` renvoie l'URL signée du fichier et son expiration : `{"url": "…", "expireA": "2026-10-13T11:02:00Z"}`, ou 404 si le document n'existe pas. Il sert à tester audit-core à la main :
 
   ```bash
   URL=$(curl -s http://localhost:8080/api/admin/documents/<id>/url-temporaire | jq -r .url)
   curl -s -X POST http://localhost:8000/v1/ocr -H "Content-Type: application/json" -d "{\"url\": \"$URL\"}"
   ```
 
-Les fichiers sont stockés hors base, sous la clé `dossiers/{dossierId}/{documentId}.{extension}` ; la base ne contient que leurs métadonnées. Le code ne dépend que de l'interface `StockageFichiers` et de l'API S3 (configuration `app.stockage.*`).
+Les fichiers sont stockés hors base, sous la clé `dossiers/{dossierId}/{documentId}.{extension}`, et les résultats de traitement sous `dossiers/{dossierId}/{documentId}/` ; la base ne contient que leurs métadonnées. Le code ne dépend que de l'interface `StockageFichiers` et de l'API S3 (configuration `app.stockage.*`).
 
 ## Adresse des URL signées
 
@@ -81,7 +110,7 @@ Deux propriétés distinguent les deux usages :
 Selon l'endroit où tournent les services :
 
 - **audit-api sur la machine, audit-core dans Docker** (développement, profil `dev`) : `endpoint` vaut `http://localhost:9000` et `endpoint-public` vaut `http://host.docker.internal:9000`. Cette dernière valeur est définie dans `application-dev.properties` : `localhost` désignerait le conteneur d'audit-core lui-même.
-- **Tout dans Docker** (futur service compose d'audit-api) : les deux adresses valent `http://stockage-s3:9000`, le nom du service dans le réseau compose. Elles se passent par variables d'environnement dans le service compose d'audit-api :
+- **Tout dans Docker** (service `api` du profil `full` d'audit-infra) : les deux adresses valent `http://stockage-s3:9000`, le nom du service dans le réseau compose. Elles sont passées par variables d'environnement dans le service compose :
 
   ```yaml
   environment:

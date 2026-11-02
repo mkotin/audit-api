@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -16,10 +17,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.melas.audit_api.TestcontainersConfiguration;
+import com.melas.audit_api.domain.Alerte;
 import com.melas.audit_api.domain.BoiteEnglobante;
 import com.melas.audit_api.domain.ChampExtrait;
 import com.melas.audit_api.domain.Document;
 import com.melas.audit_api.domain.Dossier;
+import com.melas.audit_api.domain.Extraction;
+import com.melas.audit_api.domain.ResultatOcr;
 import com.melas.audit_api.domain.StatutDocument;
 
 import jakarta.persistence.EntityManager;
@@ -45,9 +49,15 @@ class PersistanceTest {
 	private ChampExtraitRepository champExtraitRepository;
 
 	@Autowired
+	private ResultatOcrRepository resultatOcrRepository;
+
+	@Autowired
+	private ExtractionRepository extractionRepository;
+
+	@Autowired
 	private EntityManager entityManager;
 
-	private Dossier dossierAvecUnDocumentEtDeuxChamps(String reference) {
+	private Dossier dossierAvecUnDocument(String reference) {
 		Dossier dossier = Dossier.builder()
 				.referenceExterne(reference)
 				.domaine("assurance_habitation")
@@ -65,24 +75,64 @@ class PersistanceTest {
 				.nombrePages(2)
 				.build();
 		dossier.ajouterDocument(devis);
+		return dossier;
+	}
 
-		devis.ajouterChamp(ChampExtrait.builder()
+	/** Enregistre le dossier, puis un passage d'OCR et un passage d'extraction de deux champs pour son document. */
+	private Dossier enregistrerAvecDeuxChamps(String reference) {
+		Dossier dossier = dossierRepository.save(dossierAvecUnDocument(reference));
+		Document devis = dossier.getDocuments().getFirst();
+		ResultatOcr ocr = resultatOcrRepository.save(ResultatOcr.builder()
+				.id(UUID.randomUUID())
+				.document(devis)
+				.cleStockage(reference + "/ocr.json")
+				.versionService("0.1.0")
+				.typeFichier("pdf")
+				.methodeGlobale("natif")
+				.moteurs("pymupdf 1.28.2")
+				.nombrePages(2)
+				.dureeTelechargementMs(23)
+				.dureeExtractionMs(9)
+				.build());
+		Extraction extraction = Extraction.builder()
+				.id(UUID.randomUUID())
+				.document(devis)
+				.resultatOcr(ocr)
+				.cleStockage(reference + "/extraction.json")
+				.typeDocument("devis")
+				.confiance(0.885)
+				.alertes(List.of(new Alerte("champ_obligatoire_absent", "Champ absent", List.of("emetteur_siret"))))
+				.pagesAnalysees(2)
+				.modele("beam")
+				.fournisseur("ollama")
+				.versionConsigne("1")
+				.empreinteConsigne("a".repeat(64))
+				.versionDomaine("1.3")
+				.empreinteDomaine("b".repeat(64))
+				.dureeMs(8807)
+				.tentatives(1)
+				.build();
+
+		extraction.ajouterChamp(ChampExtrait.builder()
 				.nom("total_ttc")
 				.valeurBrute("1 451,00 €")
 				.valeurNormalisee("1451.00")
 				.confiance(new BigDecimal("0.970"))
 				.page(2)
 				.zone(new BoiteEnglobante(0.62, 0.81, 0.2, 0.03))
+				.alertes(List.of(new Alerte("bloc_corrige", "Bloc corrigé", List.of("total_ttc"))))
+				.ordre(0)
 				.extraitPar("llm-extract-v1/claude-sonnet")
 				.build());
-		devis.ajouterChamp(ChampExtrait.builder()
+		extraction.ajouterChamp(ChampExtrait.builder()
 				.nom("date_devis")
 				.valeurBrute("30/03/2026")
 				.valeurNormalisee("2026-03-30")
 				.confiance(new BigDecimal("0.885"))
+				.ordre(1)
 				.extraitPar("llm-extract-v1/claude-sonnet")
 				.build());
-
+		extractionRepository.save(extraction);
 		return dossier;
 	}
 
@@ -94,7 +144,7 @@ class PersistanceTest {
 	@Test
 	void persisteEtRelitUnDossierComplet() {
 		Instant avant = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_001"));
+		Dossier dossier = enregistrerAvecDeuxChamps("dossier_001");
 		viderContexte();
 
 		Dossier relu = dossierRepository.findByReferenceExterne("dossier_001").orElseThrow();
@@ -120,18 +170,24 @@ class PersistanceTest {
 					assertThat(champ.getPage()).isEqualTo(2);
 					assertThat(champ.getZone()).isEqualTo(new BoiteEnglobante(0.62, 0.81, 0.2, 0.03));
 					assertThat(champ.getExtraitPar()).isEqualTo("llm-extract-v1/claude-sonnet");
+					assertThat(champ.getAlertes())
+							.containsExactly(new Alerte("bloc_corrige", "Bloc corrigé", List.of("total_ttc")));
+					assertThat(champ.getOrdre()).isZero();
+					assertThat(champ.getExtraction().getAlertes()).containsExactly(
+							new Alerte("champ_obligatoire_absent", "Champ absent", List.of("emetteur_siret")));
 					assertThat(champ.getDateExtraction()).isNotNull();
 				})
 				.anySatisfy(champ -> {
 					assertThat(champ.getNom()).isEqualTo("date_devis");
 					assertThat(champ.getPage()).isNull();
 					assertThat(champ.getZone()).isNull();
+					assertThat(champ.getAlertes()).isEmpty();
 				});
 	}
 
 	@Test
 	void requetesParStatutEtParEmpreinte() {
-		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_002"));
+		Dossier dossier = enregistrerAvecDeuxChamps("dossier_002");
 		Document document = dossier.getDocuments().getFirst();
 		document.demarrerTraitement();
 		viderContexte();
@@ -146,7 +202,7 @@ class PersistanceTest {
 
 	@Test
 	void laSuppressionDUnDossierSupprimeDocumentsEtChamps() {
-		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_003"));
+		Dossier dossier = enregistrerAvecDeuxChamps("dossier_003");
 		UUID documentId = dossier.getDocuments().getFirst().getId();
 		viderContexte();
 
@@ -160,7 +216,7 @@ class PersistanceTest {
 
 	@Test
 	void laBaseSupprimeEnCascadeMemeSansPasserParJpa() {
-		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_004"));
+		Dossier dossier = enregistrerAvecDeuxChamps("dossier_004");
 		UUID documentId = dossier.getDocuments().getFirst().getId();
 		viderContexte();
 
@@ -180,7 +236,7 @@ class PersistanceTest {
 
 	@Test
 	void unDocumentEnregistreNEstPlusConsidereCommeNouveau() {
-		Dossier dossier = dossierAvecUnDocumentEtDeuxChamps("dossier_005");
+		Dossier dossier = dossierAvecUnDocument("dossier_005");
 		Document document = dossier.getDocuments().getFirst();
 		assertThat(document.isNew()).isTrue();
 
@@ -193,7 +249,7 @@ class PersistanceTest {
 
 	@Test
 	void laBaseRejetteLeMemeFichierDeuxFoisDansUnDossier() {
-		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_006"));
+		Dossier dossier = enregistrerAvecDeuxChamps("dossier_006");
 		viderContexte();
 
 		Dossier relu = dossierRepository.findById(dossier.getId()).orElseThrow();
@@ -223,17 +279,18 @@ class PersistanceTest {
 	}
 
 	private void assertConfianceRejetee(String confiance) {
-		Dossier dossier = dossierRepository.save(dossierAvecUnDocumentEtDeuxChamps("dossier_conf_" + confiance));
+		Dossier dossier = enregistrerAvecDeuxChamps("dossier_conf_" + confiance);
 		viderContexte();
 
-		Document document = documentRepository.findById(dossier.getDocuments().getFirst().getId()).orElseThrow();
+		Extraction extraction = extractionRepository
+				.findFirstByDocumentIdOrderByDateCreationDesc(dossier.getDocuments().getFirst().getId()).orElseThrow();
 		ChampExtrait champ = ChampExtrait.builder()
 				.nom("total_ht")
 				.valeurBrute("1 209,17 €")
 				.confiance(new BigDecimal(confiance))
 				.extraitPar("llm-extract-v1/claude-sonnet")
 				.build();
-		document.ajouterChamp(champ);
+		extraction.ajouterChamp(champ);
 
 		assertThatThrownBy(() -> champExtraitRepository.saveAndFlush(champ))
 				.isInstanceOf(DataIntegrityViolationException.class)

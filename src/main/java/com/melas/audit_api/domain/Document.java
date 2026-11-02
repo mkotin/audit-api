@@ -129,6 +129,10 @@ public class Document implements Persistable<UUID> {
 		return Collections.unmodifiableList(champs);
 	}
 
+	/**
+	 * Les champs sont créés par {@link Extraction#ajouterChamp} : un champ doit appartenir à un passage d'extraction
+	 * pour être enregistré.
+	 */
 	public void ajouterChamp(ChampExtrait champ) {
 		Objects.requireNonNull(champ, "champ");
 		champs.add(champ);
@@ -164,6 +168,16 @@ public class Document implements Persistable<UUID> {
 	/** RECU ou ERREUR → EN_COURS. Depuis ERREUR, il s'agit d'un retraitement : le message d'erreur est effacé. */
 	public void demarrerTraitement() {
 		verifierStatut("démarrer le traitement", StatutDocument.RECU, StatutDocument.ERREUR);
+		this.statut = StatutDocument.EN_COURS;
+		this.messageErreur = null;
+	}
+
+	/**
+	 * RECU, ERREUR ou EXTRAIT → EN_COURS : relance demandée explicitement (traitement complet ou extraction seule).
+	 * Le message d'erreur éventuel est effacé ; les résultats des passages précédents sont conservés.
+	 */
+	public void relancerTraitement() {
+		verifierStatut("relancer le traitement", StatutDocument.RECU, StatutDocument.ERREUR, StatutDocument.EXTRAIT);
 		this.statut = StatutDocument.EN_COURS;
 		this.messageErreur = null;
 	}

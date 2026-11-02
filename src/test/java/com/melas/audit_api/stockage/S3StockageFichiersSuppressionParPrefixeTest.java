@@ -82,6 +82,20 @@ class S3StockageFichiersSuppressionParPrefixeTest {
 	}
 
 	@Test
+	void lePrefixeDUnDocumentNeSupprimeQueSesResultatsDeTraitement() {
+		UUID document = UUID.randomUUID();
+		UUID autreDocument = UUID.randomUUID();
+		deposerObjet(dossierA, document + "/ocr/" + UUID.randomUUID() + ".json");
+		deposerObjet(dossierA, document + "/extraction/" + UUID.randomUUID() + ".json");
+		deposerObjet(dossierA, autreDocument + "/ocr/" + UUID.randomUUID() + ".json");
+
+		int supprimes = stockage.supprimerParPrefixe(CleStockage.prefixeDocument(dossierA, document));
+
+		assertThat(supprimes).isEqualTo(2);
+		assertThat(cles(dossierA)).hasSize(6).noneMatch(cle -> cle.contains(document.toString()));
+	}
+
+	@Test
 	void parcourtToutesLesPagesDuListingEtSupprimeParLots() {
 		// Lots de 2 : 5 fichiers imposent plusieurs pages de listing et 3 lots de suppression (2 + 2 + 1).
 		S3Client s3Espion = spy(s3);

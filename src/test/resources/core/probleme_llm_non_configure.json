@@ -1,0 +1,1 @@
+{"type": "about:blank", "title": "LLM non configuré", "status": 503, "detail": "Aucun LLM n'est configuré : définir CORE_LLM_MODELE.", "instance": "/v1/classification"}

@@ -2,18 +2,32 @@ package com.melas.audit_api.repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import com.melas.audit_api.domain.Document;
 import com.melas.audit_api.domain.StatutDocument;
 
+import jakarta.persistence.LockModeType;
+
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
 	List<Document> findByStatut(StatutDocument statut);
+
+	List<Document> findByStatutOrderByDateReceptionAsc(StatutDocument statut);
+
+	/**
+	 * Lit le document en verrouillant sa ligne jusqu'à la fin de la transaction (SELECT … FOR UPDATE) : deux
+	 * demandes concurrentes de traitement, ou une demande et une suppression, sont sérialisées.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select d from Document d where d.id = :id")
+	Optional<Document> findAvecVerrouById(UUID id);
 
 	List<Document> findByEmpreinteSha256(String empreinteSha256);
 

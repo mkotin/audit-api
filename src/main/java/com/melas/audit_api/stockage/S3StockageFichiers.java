@@ -24,9 +24,14 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 @Component
 class S3StockageFichiers implements StockageFichiers {
 
-	/** Seul préfixe accepté pour une suppression groupée : le dossier d'un seul dossier métier. */
-	private static final Pattern PREFIXE_DOSSIER =
-			Pattern.compile("dossiers/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/");
+	private static final String MOTIF_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+	/**
+	 * Seuls préfixes acceptés pour une suppression groupée : le dossier d'un seul dossier métier, ou les résultats de
+	 * traitement d'un seul document.
+	 */
+	private static final Pattern PREFIXE_DOSSIER_OU_DOCUMENT =
+			Pattern.compile("dossiers/%s/(%s/)?".formatted(MOTIF_UUID, MOTIF_UUID));
 
 	/** Maximum imposé par l'API S3 DeleteObjects (et taille de page du listing). */
 	static final int TAILLE_LOT_MAX = 1000;
@@ -71,9 +76,10 @@ class S3StockageFichiers implements StockageFichiers {
 
 	@Override
 	public int supprimerParPrefixe(String prefixe) {
-		if (prefixe == null || !PREFIXE_DOSSIER.matcher(prefixe).matches()) {
+		if (prefixe == null || !PREFIXE_DOSSIER_OU_DOCUMENT.matcher(prefixe).matches()) {
 			throw new IllegalArgumentException(
-					"Préfixe refusé pour une suppression groupée : \"%s\" (attendu : dossiers/{uuid}/)".formatted(prefixe));
+					("Préfixe refusé pour une suppression groupée : \"%s\" "
+							+ "(attendu : dossiers/{uuid}/ ou dossiers/{uuid}/{uuid}/)").formatted(prefixe));
 		}
 		return executer("supprimer par préfixe", prefixe, () -> {
 			int supprimes = 0;

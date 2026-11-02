@@ -78,7 +78,36 @@ class DocumentStatutTest {
 	}
 
 	@Test
-	void aucuneTransition_depuisExtrait() {
+	void relancerTraitement_depuisRecuErreurOuExtrait_passeEnCoursEtEffaceLeMessage() {
+		Document recu = nouveauDocument();
+		recu.relancerTraitement();
+		assertThat(recu.getStatut()).isEqualTo(StatutDocument.EN_COURS);
+
+		Document enErreur = nouveauDocument();
+		enErreur.demarrerTraitement();
+		enErreur.marquerErreur("OCR impossible");
+		enErreur.relancerTraitement();
+		assertThat(enErreur.getStatut()).isEqualTo(StatutDocument.EN_COURS);
+		assertThat(enErreur.getMessageErreur()).isNull();
+
+		Document extrait = nouveauDocument();
+		extrait.demarrerTraitement();
+		extrait.marquerExtrait();
+		extrait.relancerTraitement();
+		assertThat(extrait.getStatut()).isEqualTo(StatutDocument.EN_COURS);
+	}
+
+	@Test
+	void relancerTraitement_depuisEnCours_estRefuse() {
+		Document document = nouveauDocument();
+		document.demarrerTraitement();
+
+		assertThatThrownBy(document::relancerTraitement).isInstanceOf(IllegalStateException.class);
+		assertThat(document.getStatut()).isEqualTo(StatutDocument.EN_COURS);
+	}
+
+	@Test
+	void depuisExtrait_seuleLaRelanceExpliciteEstPossible() {
 		Document document = nouveauDocument();
 		document.demarrerTraitement();
 		document.marquerExtrait();

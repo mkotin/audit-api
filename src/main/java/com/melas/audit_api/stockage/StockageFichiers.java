@@ -21,11 +21,12 @@ public interface StockageFichiers {
 	void supprimer(String cle);
 
 	/**
-	 * Supprime tous les fichiers d'un dossier. Par sécurité, seul un préfixe de la forme exacte
-	 * {@code dossiers/{uuid}/} est accepté : jamais la racine, ni un préfixe qui couvrirait plusieurs dossiers.
+	 * Supprime tous les fichiers d'un dossier, ou les résultats de traitement d'un document. Par sécurité, seul un
+	 * préfixe de la forme exacte {@code dossiers/{uuid}/} ou {@code dossiers/{uuid}/{uuid}/} est accepté : jamais la
+	 * racine, ni un préfixe qui couvrirait plusieurs dossiers ou documents.
 	 *
 	 * @return le nombre de fichiers supprimés
-	 * @throws IllegalArgumentException si le préfixe ne correspond pas à ce motif
+	 * @throws IllegalArgumentException si le préfixe ne correspond à aucun de ces motifs
 	 */
 	int supprimerParPrefixe(String prefixe);
 

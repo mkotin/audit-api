@@ -2,10 +2,13 @@ package com.melas.audit_api.domain;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
 import org.hibernate.Hibernate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -36,7 +39,15 @@ public class ChampExtrait {
 	@JoinColumn(name = "document_id", nullable = false)
 	private Document document;
 
-	/** Nom du champ, défini par la configuration du domaine (ex. "total_ttc"). */
+	/** Passage d'extraction dont le champ est issu (et, par lui, le résultat d'OCR utilisé). */
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "extraction_id", nullable = false)
+	private Extraction extraction;
+
+	/**
+	 * Chemin du champ dans le type de document, défini par le domaine : "total_ttc", ou "lignes[2].montant_ht" pour
+	 * un sous-champ d'une liste (indices à partir de 0).
+	 */
 	@Column(name = "nom", nullable = false, length = 100)
 	private String nom;
 
@@ -56,7 +67,16 @@ public class ChampExtrait {
 	@Embedded
 	private BoiteEnglobante zone;
 
-	/** Identifiant et version de l'extracteur ou du modèle (ex. "llm-extract-v1/claude-sonnet"). */
+	/** Alertes propres au champ (valeur introuvable dans le texte, bloc corrigé…). */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "alertes", nullable = false)
+	private List<Alerte> alertes;
+
+	/** Rang du champ dans le résultat de l'extraction (ordre des champs du type de document). */
+	@Column(name = "ordre")
+	private Integer ordre;
+
+	/** Identifiant et version de l'extracteur : modèle et version de la consigne (ex. "beam/consigne-1"). */
 	@Column(name = "extrait_par", nullable = false)
 	private String extraitPar;
 
@@ -65,13 +85,16 @@ public class ChampExtrait {
 
 	@Builder
 	private ChampExtrait(String nom, String valeurBrute, String valeurNormalisee, BigDecimal confiance,
-			Integer page, BoiteEnglobante zone, String extraitPar, Instant dateExtraction) {
+			Integer page, BoiteEnglobante zone, List<Alerte> alertes, Integer ordre, String extraitPar,
+			Instant dateExtraction) {
 		this.nom = Objects.requireNonNull(nom, "nom");
 		this.valeurBrute = Objects.requireNonNull(valeurBrute, "valeurBrute");
 		this.valeurNormalisee = valeurNormalisee;
 		this.confiance = Objects.requireNonNull(confiance, "confiance");
 		this.page = page;
 		this.zone = zone;
+		this.alertes = alertes == null ? List.of() : List.copyOf(alertes);
+		this.ordre = ordre;
 		this.extraitPar = Objects.requireNonNull(extraitPar, "extraitPar");
 		this.dateExtraction = dateExtraction != null ? dateExtraction : Instant.now();
 	}
@@ -79,6 +102,15 @@ public class ChampExtrait {
 	/** Appelé uniquement par {@link Document#ajouterChamp} pour maintenir les deux côtés de la relation. */
 	void rattacherA(Document document) {
 		this.document = document;
+	}
+
+	/**
+	 * Appelé uniquement par {@link Extraction#ajouterChamp} : rattache le champ au passage et à son document (la
+	 * collection {@link Document#getChamps()}, côté inverse, n'est pas chargée pour autant).
+	 */
+	void rattacherAExtraction(Extraction extraction) {
+		this.extraction = extraction;
+		this.document = extraction.getDocument();
 	}
 
 	@Override

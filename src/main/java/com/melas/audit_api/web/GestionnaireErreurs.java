@@ -23,6 +23,10 @@ import com.melas.audit_api.service.ReferenceDejaUtiliseeException;
 import com.melas.audit_api.service.TypeFichierNonSupporteException;
 import com.melas.audit_api.stockage.StockageException;
 import com.melas.audit_api.stockage.StockageIndisponibleException;
+import com.melas.audit_api.traitement.ExtractionImpossibleException;
+import com.melas.audit_api.traitement.FileTraitementPleineException;
+import com.melas.audit_api.traitement.ResultatIntrouvableException;
+import com.melas.audit_api.traitement.TraitementEnCoursException;
 
 /**
  * Traduit les exceptions en réponses ProblemDetail (RFC 9457). Les erreurs propres à Spring MVC (validation,
@@ -38,13 +42,15 @@ public class GestionnaireErreurs extends ResponseEntityExceptionHandler {
 		return probleme(HttpStatus.BAD_REQUEST, "Requête invalide", e.getMessage());
 	}
 
-	@ExceptionHandler({ DossierIntrouvableException.class, DocumentIntrouvableException.class })
+	@ExceptionHandler({ DossierIntrouvableException.class, DocumentIntrouvableException.class,
+			ResultatIntrouvableException.class })
 	ProblemDetail introuvable(RuntimeException e) {
 		return probleme(HttpStatus.NOT_FOUND, "Ressource introuvable", e.getMessage());
 	}
 
 	@ExceptionHandler({ ReferenceDejaUtiliseeException.class, DocumentEnDoublonException.class,
-			DocumentNonSupprimableException.class })
+			DocumentNonSupprimableException.class, TraitementEnCoursException.class,
+			ExtractionImpossibleException.class })
 	ProblemDetail conflit(RuntimeException e) {
 		return probleme(HttpStatus.CONFLICT, "Conflit", e.getMessage());
 	}
@@ -52,6 +58,11 @@ public class GestionnaireErreurs extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(TypeFichierNonSupporteException.class)
 	ProblemDetail typeNonSupporte(TypeFichierNonSupporteException e) {
 		return probleme(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Type de fichier non supporté", e.getMessage());
+	}
+
+	@ExceptionHandler(FileTraitementPleineException.class)
+	ProblemDetail filePleine(FileTraitementPleineException e) {
+		return probleme(HttpStatus.SERVICE_UNAVAILABLE, "File de traitement pleine", e.getMessage());
 	}
 
 	@ExceptionHandler(StockageIndisponibleException.class)

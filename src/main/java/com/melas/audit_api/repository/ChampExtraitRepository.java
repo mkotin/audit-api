@@ -11,4 +11,6 @@ public interface ChampExtraitRepository extends JpaRepository<ChampExtrait, UUID
 
 	List<ChampExtrait> findByDocumentId(UUID documentId);
 
+	List<ChampExtrait> findByExtractionIdOrderByOrdreAsc(UUID extractionId);
+
 }
