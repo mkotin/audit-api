@@ -38,10 +38,10 @@ public class Dossier {
 	private String referenceExterne;
 
 	@Column(name = "domaine", nullable = false, length = 100)
-	private String domaine;
+	private String domaine; // champ legacy, plus utile aujourd'hui.
 
 	@Column(name = "type_sinistre", length = 100)
-	private String typeSinistre;
+	private String typeSinistre; // champ legacy, plus utile aujourd'hui.
 
 	@CreationTimestamp
 	@Column(name = "date_creation", nullable = false, updatable = false)
