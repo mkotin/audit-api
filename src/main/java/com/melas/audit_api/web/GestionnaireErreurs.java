@@ -14,6 +14,10 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import com.melas.audit_api.consolidation.ConsolidationIntrouvableException;
+import com.melas.audit_api.core.AuditCoreException;
+import com.melas.audit_api.core.AuditCoreInjoignableException;
+import com.melas.audit_api.core.DelaiDepasseException;
 import com.melas.audit_api.service.DocumentEnDoublonException;
 import com.melas.audit_api.service.DocumentIntrouvableException;
 import com.melas.audit_api.service.DocumentNonSupprimableException;
@@ -43,9 +47,23 @@ public class GestionnaireErreurs extends ResponseEntityExceptionHandler {
 	}
 
 	@ExceptionHandler({ DossierIntrouvableException.class, DocumentIntrouvableException.class,
-			ResultatIntrouvableException.class })
+			ResultatIntrouvableException.class, ConsolidationIntrouvableException.class })
 	ProblemDetail introuvable(RuntimeException e) {
 		return probleme(HttpStatus.NOT_FOUND, "Ressource introuvable", e.getMessage());
+	}
+
+	/**
+	 * Appel synchrone à audit-core en échec (recalcul forcé de la consolidation) : injoignable 503, délai dépassé 504,
+	 * autre erreur 502. Seul le titre est renvoyé ; le détail est dans les journaux.
+	 */
+	@ExceptionHandler(AuditCoreException.class)
+	ProblemDetail auditCore(AuditCoreException e) {
+		HttpStatus statut = switch (e) {
+			case AuditCoreInjoignableException ignore -> HttpStatus.SERVICE_UNAVAILABLE;
+			case DelaiDepasseException ignore -> HttpStatus.GATEWAY_TIMEOUT;
+			default -> HttpStatus.BAD_GATEWAY;
+		};
+		return probleme(statut, "Erreur d'audit-core", e.getTitre());
 	}
 
 	@ExceptionHandler({ ReferenceDejaUtiliseeException.class, DocumentEnDoublonException.class,

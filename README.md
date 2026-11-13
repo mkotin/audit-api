@@ -81,9 +81,39 @@ Exécution : `app.traitement.parallelisme` documents à la fois (2), file de `ap
 
 audit-core est joint à `app.core.url` (`http://localhost:8000`), avec les délais `app.core.delai-connexion` (5 s) et `app.core.delai-lecture` (5 min : OCR d'un scan, appels au LLM). La classification et l'extraction demandent un LLM configuré côté audit-core (`CORE_LLM_MODELE`, voir le README d'audit-infra). `app.traitement.automatique=false` désactive le traitement après dépôt et la reprise (les relances restent possibles).
 
+## Consolidation du dossier
+
+audit-core (`POST /v1/consolidation`) rassemble les extractions de toutes les pièces d'un dossier en un dossier consolidé : faits, intervenants, liens entre pièces, valeur retenue, contradictions. Il constate, il ne juge pas. À ce stade, la consolidation n'est lancée qu'à la main (endpoint d'administration ci-dessous) ; le déclenchement automatique après chaque changement du dossier viendra ensuite.
+
+Déroulement d'un calcul, sans transaction ouverte pendant l'appel HTTP ou l'accès au stockage :
+
+1. lecture du dossier entier (trois requêtes SQL quel que soit le nombre de documents) : chaque document avec son statut, et la dernière extraction de chaque document `EXTRAIT` ;
+2. appel à audit-core (délai de lecture `app.core.delai-lecture-consolidation`, 30 s : le calcul est déterministe, sans LLM) ; empreinte SHA-256 des octets de la réponse ;
+3. si l'empreinte est celle de la dernière version, rien n'est créé ; sinon le JSON complet est écrit dans le stockage (`dossiers/{dossierId}/consolidation/{consolidationId}.json`), puis une `Consolidation` de numéro suivant (1, 2, 3…) est enregistrée sous verrou du dossier, avec les comptes et l'index des contradictions (`jsonb`). Le fichier est supprimé si la ligne n'est finalement pas créée.
+
+Un dossier sans document et jamais consolidé n'a pas de version (pas d'appel) ; un dossier qui a déjà une version et n'a plus de document en reçoit une nouvelle, sans pièce. Un échec (audit-core injoignable, trop lent, en erreur, stockage indisponible) est noté sur le dossier, sans détail technique, et effacé au succès suivant.
+
+- `GET /api/dossiers/{id}` : champ `consolidation` avec `statut` (`aucune`, `en_attente`, `a_jour`, `en_erreur`), `numero`, `date` et `nombreContradictions` de la dernière version.
+- `GET /api/dossiers/{id}/consolidations` : historique des versions (numéros, versions et empreintes du calcul et du domaine, comptes, durée, identifiant de corrélation), de la plus récente à la plus ancienne.
+- `GET /api/dossiers/{id}/consolidations/derniere` et `GET /api/dossiers/{id}/consolidations/{numero}` : JSON complet, tel qu'audit-core l'a renvoyé, numéro dans l'en-tête `X-Consolidation-Numero` ; 404 s'il n'existe pas.
+
+Les journaux de la consolidation ne contiennent que des comptes, des versions, des durées et des identifiants, jamais une valeur extraite.
+
+Limite connue de cette étape : le compteur de demandes du dossier (`consolidation_demande_seq`), qui écarte un résultat calculé sur un état plus ancien que la dernière version, n'est encore incrémenté par rien. Deux recalculs manuels simultanés du même dossier ne sont donc pas départagés : leurs enregistrements sont sérialisés par le verrou du dossier, et le second peut créer une version qui remplace celle du premier. C'est acceptable pour un endpoint de développement ; la règle « un seul calcul à la fois par dossier » du déclenchement automatique devra couvrir aussi cet endpoint.
+
+Contrat avec audit-core : `src/test/resources/core/consolidation_requete.json` et `consolidation_reponse.json` sont copiés d'audit-core (`tests/contrat`, dépôts clonés côte à côte) par :
+
+```powershell
+.\scripts\copier-contrat-consolidation.ps1
+```
+
+Ils sont exclus de toute conversion de fin de ligne (`.gitattributes`) ; un test vérifie qu'ils sont identiques, à l'octet près, à ceux d'audit-core.
+
 ## Administration et développement
 
 Profil `dev` uniquement :
+
+- `POST /api/admin/dossiers/{id}/consolidation` : recalcul synchrone de la consolidation ; renvoie `{"resultat": "nouvelle_version" | "inchangee" | "perimee" | "dossier_vide", "numero": …, "dureeMs": …}`. audit-core injoignable : 503 ; délai dépassé : 504 ; autre erreur d'audit-core : 502.
 
 - `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
 - `GET /api/admin/documents/{id}/ocr` et `GET /api/admin/documents/{id}/extraction` renvoient le JSON complet du dernier OCR et de la dernière extraction, tel qu'audit-core l'a produit ; 404 s'il n'y en a pas.

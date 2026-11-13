@@ -18,7 +18,9 @@ import org.springframework.web.client.RestClient;
 
 import com.melas.audit_api.core.dto.DocumentExtrait;
 import com.melas.audit_api.core.dto.ProblemeCore;
+import com.melas.audit_api.core.dto.ReponseConsolidation;
 import com.melas.audit_api.core.dto.ReponseOcr;
+import com.melas.audit_api.core.dto.RequeteConsolidation;
 import com.melas.audit_api.core.dto.RequeteClassification;
 import com.melas.audit_api.core.dto.RequeteExtraction;
 import com.melas.audit_api.core.dto.RequeteOcr;
@@ -46,7 +48,8 @@ public class ClientAuditCore {
 	private enum Appel {
 		OCR("/v1/ocr"),
 		CLASSIFICATION("/v1/classification"),
-		EXTRACTION("/v1/extraction");
+		EXTRACTION("/v1/extraction"),
+		CONSOLIDATION("/v1/consolidation");
 
 		private final String chemin;
 
@@ -59,11 +62,30 @@ public class ClientAuditCore {
 	}
 
 	private final RestClient client;
+	private final RestClient clientConsolidation;
 	private final JsonMapper json;
 
-	public ClientAuditCore(@Qualifier("restClientCore") RestClient client) {
+	public ClientAuditCore(@Qualifier("restClientCore") RestClient client,
+			@Qualifier("restClientConsolidation") RestClient clientConsolidation) {
 		this.client = client;
+		this.clientConsolidation = clientConsolidation;
 		this.json = CoreConfiguration.jsonMapperCore();
+	}
+
+	/**
+	 * Consolide le dossier entier (POST /v1/consolidation). Les octets de la réponse sont conservés tels quels : leur
+	 * empreinte décide d'une nouvelle version. Une réponse pour un autre dossier que celui demandé est refusée.
+	 */
+	public ReponseBrute<ReponseConsolidation> consolider(RequeteConsolidation requete) {
+		byte[] corps = appeler(Appel.CONSOLIDATION, requete);
+		ReponseConsolidation reponse = lire(Appel.CONSOLIDATION, corps, ReponseConsolidation.class);
+		if (!requete.dossierId().equals(reponse.dossierId())) {
+			throw new AuditCoreErreurException("Réponse d'audit-core pour un autre dossier",
+					"POST %s : dossier %s demandé, %s reçu".formatted(Appel.CONSOLIDATION.chemin, requete.dossierId(),
+							reponse.dossierId()),
+					(Integer) null);
+		}
+		return new ReponseBrute<>(reponse, corps);
 	}
 
 	/** Extrait le texte du document désigné par une URL signée (POST /v1/ocr). */
@@ -88,7 +110,8 @@ public class ClientAuditCore {
 		long debut = System.nanoTime();
 		ReponseHttp reponse;
 		try {
-			reponse = client.post()
+			// Corps en tableau d'octets : envoyé avec Content-Length, qu'exige POST /v1/consolidation
+			reponse = (appel == Appel.CONSOLIDATION ? clientConsolidation : client).post()
 					.uri(appel.chemin)
 					.contentType(MediaType.APPLICATION_JSON)
 					.accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_PROBLEM_JSON)
@@ -124,6 +147,12 @@ public class ClientAuditCore {
 		ProblemeCore probleme = lireProbleme(reponse.corps());
 		String titre = probleme != null && probleme.title() != null ? probleme.title() : "HTTP " + statut;
 		String detail = probleme != null ? probleme.detail() : texte(reponse.corps());
+		if (appel == Appel.CONSOLIDATION) {
+			// Calcul sans document ni LLM : 400, 411, 413 ou 500 signalent un défaut d'audit-api ou d'audit-core
+			return statut == 504
+					? new DelaiDepasseException(titre, detail, statut)
+					: new AuditCoreErreurException(titre, detail, statut);
+		}
 		boolean appelLlm = appel != Appel.OCR;
 		return switch (statut) {
 			case 413, 415 -> new DocumentIllisibleException(titre, detail, statut);

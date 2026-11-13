@@ -1,0 +1,398 @@
+{
+  "dossier_id": "00000000-0000-0000-0000-0000000f423f",
+  "reference_externe": "AUD-TEST",
+  "pieces": [
+    {
+      "document_id": "00000000-0000-0000-0000-000000000001",
+      "nom_fichier": "piece_1.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "declaration",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a1",
+        "type_document": "declaration",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "assure_nom",
+            "valeur_brute": "Élise Valcourt",
+            "valeur_normalisee": "Élise Valcourt",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "biens_voles[0].designation",
+            "valeur_brute": "Vélo",
+            "valeur_normalisee": "Vélo",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "biens_voles[0].numero_serie",
+            "valeur_brute": "VN-E500-118392",
+            "valeur_normalisee": "VN-E500-118392",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "biens_voles[0].date_achat",
+            "valeur_brute": "2025-04-19",
+            "valeur_normalisee": "2025-04-19",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000002",
+      "nom_fichier": "piece_2.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "devis",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a2",
+        "type_document": "devis",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "numero_document",
+            "valeur_brute": "DV-26-118",
+            "valeur_normalisee": "DV-26-118",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_nom",
+            "valeur_brute": "Plomberie Réault",
+            "valeur_normalisee": "Plomberie Réault",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_siret",
+            "valeur_brute": "98765432100018",
+            "valeur_normalisee": "98765432100018",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "total_ttc",
+            "valeur_brute": "400.40",
+            "valeur_normalisee": "400.40",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].designation",
+            "valeur_brute": "Plafond hydrofuge",
+            "valeur_normalisee": "Plafond hydrofuge",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].quantite",
+            "valeur_brute": "32",
+            "valeur_normalisee": "32",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].montant_ht",
+            "valeur_brute": "64.00",
+            "valeur_normalisee": "64.00",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[1].designation",
+            "valeur_brute": "Peinture",
+            "valeur_normalisee": "Peinture",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[1].montant_ht",
+            "valeur_brute": "300.00",
+            "valeur_normalisee": "300.00",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000003",
+      "nom_fichier": "piece_3.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "facture",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a3",
+        "type_document": "facture",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "numero_document",
+            "valeur_brute": "FA-3",
+            "valeur_normalisee": "FA-3",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_nom",
+            "valeur_brute": "Plomberie Réault",
+            "valeur_normalisee": "Plomberie Réault",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_siret",
+            "valeur_brute": "98765432100018",
+            "valeur_normalisee": "98765432100018",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "total_ttc",
+            "valeur_brute": "420.00",
+            "valeur_normalisee": "420.00",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].designation",
+            "valeur_brute": "Plafond hydrofuge",
+            "valeur_normalisee": "Plafond hydrofuge",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].quantite",
+            "valeur_brute": "38",
+            "valeur_normalisee": "38",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].montant_ht",
+            "valeur_brute": "64.00",
+            "valeur_normalisee": "64.00",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[1].designation",
+            "valeur_brute": "Peinture",
+            "valeur_normalisee": "Peinture",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[1].montant_ht",
+            "valeur_brute": "300.00",
+            "valeur_normalisee": "300.00",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "reference_devis",
+            "valeur_brute": "DV-26-118",
+            "valeur_normalisee": "DV-26-118",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000004",
+      "nom_fichier": "piece_4.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "facture",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a4",
+        "type_document": "facture",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "numero_document",
+            "valeur_brute": "FA-4",
+            "valeur_normalisee": "FA-4",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_nom",
+            "valeur_brute": "Atelier Ornon",
+            "valeur_normalisee": "Atelier Ornon",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_siret",
+            "valeur_brute": "12345678900026",
+            "valeur_normalisee": "12345678900026",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "reference_devis",
+            "valeur_brute": "DV-INCONNU",
+            "valeur_normalisee": "DV-INCONNU",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000005",
+      "nom_fichier": "piece_5.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "facture",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a5",
+        "type_document": "facture",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "numero_document",
+            "valeur_brute": "FA-4",
+            "valeur_normalisee": "FA-4",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_nom",
+            "valeur_brute": "Atelier Ornon",
+            "valeur_normalisee": "Atelier Ornon",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_siret",
+            "valeur_brute": "12345678900026",
+            "valeur_normalisee": "12345678900026",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "reference_devis",
+            "valeur_brute": "DV-INCONNU",
+            "valeur_normalisee": "DV-INCONNU",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000006",
+      "nom_fichier": "piece_6.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "facture",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a6",
+        "type_document": "facture",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "numero_document",
+            "valeur_brute": "FA-6",
+            "valeur_normalisee": "FA-6",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "emetteur_nom",
+            "valeur_brute": "Magasin 6",
+            "valeur_normalisee": "Magasin 6",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "total_ttc",
+            "valeur_brute": "1432.80",
+            "valeur_normalisee": "1432.80",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "date_document",
+            "valeur_brute": "2025-04-19",
+            "valeur_normalisee": "2025-04-19",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].designation",
+            "valeur_brute": "Article 0",
+            "valeur_normalisee": "Article 0",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "lignes[0].numero_serie",
+            "valeur_brute": "VN-E500-118392",
+            "valeur_normalisee": "VN-E500-118392",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000007",
+      "nom_fichier": "piece_7.pdf",
+      "statut": "EXTRAIT",
+      "message_erreur": null,
+      "type_document": "rapport_expert",
+      "extraction": {
+        "extraction_id": "00000000-0000-0000-0000-0000000186a7",
+        "type_document": "rapport_expert",
+        "version_domaine": "1.3",
+        "empreinte_domaine": "82aec5ebdebbc30ef2de3178b92062cf2149b8236cf147a52c5652e948a97d2b",
+        "version_consigne": "1.0",
+        "empreinte_consigne": "c0ffee",
+        "modele": "factice",
+        "champs": [
+          {
+            "chemin": "emetteur_nom",
+            "valeur_brute": "Cabinet Lormeau Expertises",
+            "valeur_normalisee": "Cabinet Lormeau Expertises",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "expert_nom",
+            "valeur_brute": "Julien Peyrat",
+            "valeur_normalisee": "Julien Peyrat",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "postes_retenus[0].reference_devis",
+            "valeur_brute": "DV-26-118",
+            "valeur_normalisee": "DV-26-118",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "postes_retenus[0].emetteur_devis",
+            "valeur_brute": "Plomberie Réault",
+            "valeur_normalisee": "Plomberie Réault",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "postes_retenus[0].montant_ttc",
+            "valeur_brute": "400.40",
+            "valeur_normalisee": "400.40",
+            "confiance": 0.9
+          },
+          {
+            "chemin": "postes_retenus[1].reference_devis",
+            "valeur_brute": "CA-DV-31",
+            "valeur_normalisee": "CA-DV-31",
+            "confiance": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "00000000-0000-0000-0000-000000000008",
+      "nom_fichier": "piece_8.pdf",
+      "statut": "ERREUR",
+      "message_erreur": null,
+      "type_document": "devis",
+      "extraction": null
+    }
+  ]
+}

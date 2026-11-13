@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import com.melas.audit_api.consolidation.ResumeConsolidation;
 import com.melas.audit_api.domain.Dossier;
 
 public record DossierResponse(
@@ -12,17 +13,19 @@ public record DossierResponse(
 		String domaine,
 		Instant dateCreation,
 		Instant dateMiseAJour,
-		List<DocumentResumeResponse> documents) {
+		List<DocumentResumeResponse> documents,
+		ConsolidationResumeResponse consolidation) {
 
 	/** Les documents du dossier doivent être chargés. */
-	public static DossierResponse depuis(Dossier dossier) {
+	public static DossierResponse depuis(Dossier dossier, ResumeConsolidation consolidation) {
 		return new DossierResponse(
 				dossier.getId(),
 				dossier.getReferenceExterne(),
 				dossier.getDomaine(),
 				dossier.getDateCreation(),
 				dossier.getDateMiseAJour(),
-				dossier.getDocuments().stream().map(DocumentResumeResponse::depuis).toList());
+				dossier.getDocuments().stream().map(DocumentResumeResponse::depuis).toList(),
+				ConsolidationResumeResponse.depuis(consolidation));
 	}
 
 }

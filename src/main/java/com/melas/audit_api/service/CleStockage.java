@@ -7,7 +7,8 @@ import java.util.UUID;
  * <ul>
  * <li>fichier déposé : {@code dossiers/{dossierId}/{documentId}.{extension}} ;</li>
  * <li>résultats des traitements : {@code dossiers/{dossierId}/{documentId}/ocr/{resultatOcrId}.json} et
- * {@code dossiers/{dossierId}/{documentId}/extraction/{extractionId}.json}.</li>
+ * {@code dossiers/{dossierId}/{documentId}/extraction/{extractionId}.json} ;</li>
+ * <li>versions de la consolidation du dossier : {@code dossiers/{dossierId}/consolidation/{consolidationId}.json}.</li>
  * </ul>
  * Le nom d'origine n'y figure jamais (caractères arbitraires, données potentiellement personnelles).
  */
@@ -28,6 +29,11 @@ public final class CleStockage {
 	/** Réponse complète d'un passage d'extraction (JSON d'audit-core). */
 	public static String extraction(UUID dossierId, UUID documentId, UUID extractionId) {
 		return "%s%s.json".formatted(prefixeDocument(dossierId, documentId) + "extraction/", extractionId);
+	}
+
+	/** Réponse complète d'une version de consolidation du dossier (JSON d'audit-core). */
+	public static String consolidation(UUID dossierId, UUID consolidationId) {
+		return "%sconsolidation/%s.json".formatted(prefixeDossier(dossierId), consolidationId);
 	}
 
 	/** Préfixe des résultats de traitement d'un document (le fichier déposé n'en fait pas partie). */

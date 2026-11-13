@@ -51,6 +51,29 @@ public class Dossier {
 	@OneToMany(mappedBy = "dossier", cascade = CascadeType.ALL, orphanRemoval = true)
 	private List<Document> documents = new ArrayList<>();
 
+	// --- Suivi de la consolidation (V5). Demandes et nouvelles tentatives automatiques : étape 7d. ---
+
+	/** Incrémenté dans la transaction de chaque changement du dossier (7d) ; ne redescend jamais. */
+	@Column(name = "consolidation_demande_seq", nullable = false)
+	private long consolidationDemandeSeq;
+
+	/** Dernier compteur traité : une demande est en attente si {@code consolidationDemandeSeq} est plus grand. */
+	@Column(name = "consolidation_seq_traitee", nullable = false)
+	private long consolidationSeqTraitee;
+
+	/** Dernier échec (titre sans détail technique), effacé au succès suivant. */
+	@Column(name = "consolidation_erreur", columnDefinition = "text")
+	private String consolidationErreur;
+
+	@Column(name = "consolidation_erreur_le")
+	private Instant consolidationErreurLe;
+
+	@Column(name = "consolidation_prochaine_tentative_le")
+	private Instant consolidationProchaineTentativeLe;
+
+	@Column(name = "consolidation_tentatives", nullable = false)
+	private int consolidationTentatives;
+
 	@Builder
 	private Dossier(String referenceExterne, String domaine) {
 		this.referenceExterne = Objects.requireNonNull(referenceExterne, "referenceExterne");
@@ -71,6 +94,39 @@ public class Dossier {
 		if (documents.remove(document)) {
 			document.rattacherA(null);
 		}
+	}
+
+	/**
+	 * Consolidation réussie (nouvelle version ou résultat inchangé) à partir du compteur {@code seqLue} : la demande
+	 * correspondante est traitée, et la dernière erreur effacée. Le compteur traité ne redescend jamais.
+	 */
+	public void consolidationReussie(long seqLue) {
+		this.consolidationSeqTraitee = Math.max(consolidationSeqTraitee, seqLue);
+		this.consolidationErreur = null;
+		this.consolidationErreurLe = null;
+		this.consolidationTentatives = 0;
+		this.consolidationProchaineTentativeLe = null;
+	}
+
+	/** Consolidation en échec : le message (sans détail technique) et sa date sont conservés jusqu'au succès suivant. */
+	public void consolidationEchouee(String message, Instant le) {
+		this.consolidationErreur = Objects.requireNonNull(message, "message");
+		this.consolidationErreurLe = Objects.requireNonNull(le, "le");
+	}
+
+	/**
+	 * Statut déduit, par ordre de priorité : en erreur, en attente, à jour (une version existe), aucune.
+	 *
+	 * @param aUneVersion le dossier a au moins une version de consolidation
+	 */
+	public StatutConsolidation statutConsolidation(boolean aUneVersion) {
+		if (consolidationErreur != null) {
+			return StatutConsolidation.EN_ERREUR;
+		}
+		if (consolidationDemandeSeq > consolidationSeqTraitee) {
+			return StatutConsolidation.EN_ATTENTE;
+		}
+		return aUneVersion ? StatutConsolidation.A_JOUR : StatutConsolidation.AUCUNE;
 	}
 
 	@Override

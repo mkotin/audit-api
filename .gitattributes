@@ -1,2 +1,7 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+
+# Fichiers de contrat de POST /v1/consolidation, copiés d'audit-core : laissés tels quels, sans
+# conversion des fins de ligne, pour rester identiques à l'octet près dans tous les clones (l'empreinte
+# de la réponse en dépend).
+src/test/resources/core/consolidation_*.json -text

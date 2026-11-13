@@ -1,6 +1,7 @@
 package com.melas.audit_api.core;
 
 import java.net.http.HttpClient;
+import java.time.Duration;
 
 import org.slf4j.MDC;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -23,12 +24,22 @@ class CoreConfiguration {
 	 */
 	@Bean
 	RestClient restClientCore(CoreProperties proprietes) {
+		return client(proprietes, proprietes.delaiLecture());
+	}
+
+	/** Même client, avec le délai de lecture propre à la consolidation (court : calcul sans LLM ni réseau). */
+	@Bean
+	RestClient restClientConsolidation(CoreProperties proprietes) {
+		return client(proprietes, proprietes.delaiLectureConsolidation());
+	}
+
+	private static RestClient client(CoreProperties proprietes, Duration delaiLecture) {
 		HttpClient client = HttpClient.newBuilder()
 				.version(HttpClient.Version.HTTP_1_1)
 				.connectTimeout(proprietes.delaiConnexion())
 				.build();
 		JdkClientHttpRequestFactory fabrique = new JdkClientHttpRequestFactory(client);
-		fabrique.setReadTimeout(proprietes.delaiLecture());
+		fabrique.setReadTimeout(delaiLecture);
 		return RestClient.builder()
 				.baseUrl(proprietes.url().toString())
 				.requestFactory(fabrique)
