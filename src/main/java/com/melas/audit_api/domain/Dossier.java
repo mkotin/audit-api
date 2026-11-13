@@ -40,9 +40,6 @@ public class Dossier {
 	@Column(name = "domaine", nullable = false, length = 100)
 	private String domaine; // champ legacy, plus utile aujourd'hui.
 
-	@Column(name = "type_sinistre", length = 100)
-	private String typeSinistre; // champ legacy, plus utile aujourd'hui.
-
 	@CreationTimestamp
 	@Column(name = "date_creation", nullable = false, updatable = false)
 	private Instant dateCreation;
@@ -55,10 +52,9 @@ public class Dossier {
 	private List<Document> documents = new ArrayList<>();
 
 	@Builder
-	private Dossier(String referenceExterne, String domaine, String typeSinistre) {
+	private Dossier(String referenceExterne, String domaine) {
 		this.referenceExterne = Objects.requireNonNull(referenceExterne, "referenceExterne");
 		this.domaine = Objects.requireNonNull(domaine, "domaine");
-		this.typeSinistre = typeSinistre;
 	}
 
 	public List<Document> getDocuments() {
@@ -75,10 +71,6 @@ public class Dossier {
 		if (documents.remove(document)) {
 			document.rattacherA(null);
 		}
-	}
-
-	public void definirTypeSinistre(String typeSinistre) {
-		this.typeSinistre = typeSinistre;
 	}
 
 	@Override

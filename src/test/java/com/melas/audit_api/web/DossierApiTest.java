@@ -3,6 +3,7 @@ package com.melas.audit_api.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -25,20 +26,24 @@ class DossierApiTest extends ApiTestSupport {
 		assertThat(reponse.getHeaders().getLocation()).hasPath("/api/dossiers/" + id);
 		assertThat((String) JsonPath.read(reponse.getBody(), "$.referenceExterne")).isEqualTo(reference);
 		assertThat((String) JsonPath.read(reponse.getBody(), "$.domaine")).isEqualTo("assurance_habitation");
-		assertThat((String) JsonPath.read(reponse.getBody(), "$.typeSinistre")).isEqualTo("degat_des_eaux");
 		assertThat((Integer) JsonPath.read(reponse.getBody(), "$.documents.length()")).isZero();
+		Map<String, Object> corps = JsonPath.read(reponse.getBody(), "$");
+		assertThat(corps).doesNotContainKey("typeSinistre");
 	}
 
 	@Test
-	void leTypeDeSinistreEstOptionnel() {
+	void ignoreLAncienChampTypeSinistre() {
+		// typeSinistre a été supprimé (migration V4) : un client qui l'envoie encore n'obtient pas d'erreur
 		ResponseEntity<String> reponse = client.post().uri("/api/dossiers")
 				.contentType(MediaType.APPLICATION_JSON)
 				.body("""
-						{"referenceExterne": "%s", "domaine": "auto"}""".formatted(referenceUnique("dossier")))
+						{"referenceExterne": "%s", "domaine": "auto", "typeSinistre": "degat_des_eaux"}"""
+						.formatted(referenceUnique("dossier")))
 				.retrieve().toEntity(String.class);
 
 		assertThat(reponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-		assertThat((Object) JsonPath.read(reponse.getBody(), "$.typeSinistre")).isNull();
+		Map<String, Object> corps = JsonPath.read(reponse.getBody(), "$");
+		assertThat(corps).doesNotContainKey("typeSinistre");
 	}
 
 	@Test

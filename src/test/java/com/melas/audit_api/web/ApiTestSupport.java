@@ -82,7 +82,7 @@ public abstract class ApiTestSupport {
 		return client.post().uri("/api/dossiers")
 				.contentType(MediaType.APPLICATION_JSON)
 				.body("""
-						{"referenceExterne": "%s", "domaine": "assurance_habitation", "typeSinistre": "degat_des_eaux"}
+						{"referenceExterne": "%s", "domaine": "assurance_habitation"}
 						""".formatted(reference))
 				.retrieve()
 				.toEntity(String.class);

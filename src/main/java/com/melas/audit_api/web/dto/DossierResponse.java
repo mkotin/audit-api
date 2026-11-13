@@ -10,7 +10,6 @@ public record DossierResponse(
 		UUID id,
 		String referenceExterne,
 		String domaine,
-		String typeSinistre,
 		Instant dateCreation,
 		Instant dateMiseAJour,
 		List<DocumentResumeResponse> documents) {
@@ -21,7 +20,6 @@ public record DossierResponse(
 				dossier.getId(),
 				dossier.getReferenceExterne(),
 				dossier.getDomaine(),
-				dossier.getTypeSinistre(),
 				dossier.getDateCreation(),
 				dossier.getDateMiseAJour(),
 				dossier.getDocuments().stream().map(DocumentResumeResponse::depuis).toList());

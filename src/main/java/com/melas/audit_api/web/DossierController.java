@@ -42,7 +42,7 @@ public class DossierController {
 
 	@PostMapping
 	public ResponseEntity<DossierResponse> creer(@Valid @RequestBody CreationDossierRequest requete) {
-		Dossier dossier = dossierService.creer(requete.referenceExterne(), requete.domaine(), requete.typeSinistre());
+		Dossier dossier = dossierService.creer(requete.referenceExterne(), requete.domaine());
 		URI emplacement = ServletUriComponentsBuilder.fromCurrentRequest()
 				.path("/{id}")
 				.buildAndExpand(dossier.getId())

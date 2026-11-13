@@ -61,7 +61,6 @@ class PersistanceTest {
 		Dossier dossier = Dossier.builder()
 				.referenceExterne(reference)
 				.domaine("assurance_habitation")
-				.typeSinistre("degat_des_eaux")
 				.build();
 
 		Document devis = Document.builder()
@@ -232,6 +231,16 @@ class PersistanceTest {
 				.setParameter("id", documentId).getSingleResult();
 		assertThat(documents.longValue()).isZero();
 		assertThat(champs.longValue()).isZero();
+	}
+
+	@Test
+	void laColonneTypeSinistreNExistePlus() {
+		// Champ legacy supprimé par la migration V4
+		Number colonnes = (Number) entityManager
+				.createNativeQuery("SELECT count(*) FROM information_schema.columns "
+						+ "WHERE table_name = 'dossier' AND column_name = 'type_sinistre'")
+				.getSingleResult();
+		assertThat(colonnes.longValue()).isZero();
 	}
 
 	@Test

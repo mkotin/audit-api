@@ -32,14 +32,13 @@ public class DossierService {
 		this.transaction = transaction;
 	}
 
-	public Dossier creer(String referenceExterne, String domaine, String typeSinistre) {
+	public Dossier creer(String referenceExterne, String domaine) {
 		if (dossierRepository.existsByReferenceExterne(referenceExterne)) {
 			throw new ReferenceDejaUtiliseeException(referenceExterne);
 		}
 		Dossier dossier = Dossier.builder()
 				.referenceExterne(referenceExterne)
 				.domaine(domaine)
-				.typeSinistre(typeSinistre)
 				.build();
 		try {
 			return dossierRepository.saveAndFlush(dossier);
