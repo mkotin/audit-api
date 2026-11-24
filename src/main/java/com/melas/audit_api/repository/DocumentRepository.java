@@ -29,6 +29,10 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 	@Query("select d from Document d where d.id = :id")
 	Optional<Document> findAvecVerrouById(UUID id);
 
+	/** Dossier du document, sans charger ni verrouiller le document. */
+	@Query("select d.dossier.id from Document d where d.id = :id")
+	Optional<UUID> findDossierIdById(UUID id);
+
 	List<Document> findByEmpreinteSha256(String empreinteSha256);
 
 	boolean existsByDossierIdAndEmpreinteSha256(UUID dossierId, String empreinteSha256);

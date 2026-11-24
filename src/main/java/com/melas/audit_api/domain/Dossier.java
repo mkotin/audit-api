@@ -1,5 +1,6 @@
 package com.melas.audit_api.domain;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,10 +52,15 @@ public class Dossier {
 	@OneToMany(mappedBy = "dossier", cascade = CascadeType.ALL, orphanRemoval = true)
 	private List<Document> documents = new ArrayList<>();
 
-	// --- Suivi de la consolidation (V5). Demandes et nouvelles tentatives automatiques : étape 7d. ---
+	// --- Suivi de la consolidation (V5) ---
 
-	/** Incrémenté dans la transaction de chaque changement du dossier (7d) ; ne redescend jamais. */
-	@Column(name = "consolidation_demande_seq", nullable = false)
+	/**
+	 * Incrémenté dans la transaction de chaque changement du dossier, par un UPDATE … + 1 en SQL
+	 * ({@code DemandeConsolidation}) ; ne redescend jamais. Jamais écrit par Hibernate (insertable et updatable à
+	 * false) : Hibernate réécrit toutes les colonnes d'un dossier modifié, et une entité chargée avant un incrément
+	 * remettrait sinon l'ancienne valeur, perdant une demande.
+	 */
+	@Column(name = "consolidation_demande_seq", nullable = false, insertable = false, updatable = false)
 	private long consolidationDemandeSeq;
 
 	/** Dernier compteur traité : une demande est en attente si {@code consolidationDemandeSeq} est plus grand. */
@@ -108,8 +114,29 @@ public class Dossier {
 		this.consolidationProchaineTentativeLe = null;
 	}
 
-	/** Consolidation en échec : le message (sans détail technique) et sa date sont conservés jusqu'au succès suivant. */
-	public void consolidationEchouee(String message, Instant le) {
+	/**
+	 * Échec technique (audit-core injoignable, délai dépassé, stockage indisponible…) : la demande reste en attente,
+	 * et sera reprise après {@code attente}. Le message (sans détail technique) est conservé jusqu'au succès suivant.
+	 */
+	public void consolidationEchoueeTechnique(String message, Instant le, Duration attente) {
+		noterErreur(message, le);
+		this.consolidationTentatives++;
+		this.consolidationProchaineTentativeLe = le.plus(Objects.requireNonNull(attente, "attente"));
+	}
+
+	/**
+	 * Échec qui se reproduirait à l'identique (requête refusée, erreur interne d'audit-core, réponse illisible, bug) :
+	 * la demande lue ({@code seqLue}) est marquée traitée, sans nouvelle tentative ; le prochain changement du
+	 * dossier redéclenchera un calcul. Le message est conservé jusqu'au succès suivant.
+	 */
+	public void consolidationEchoueeSansNouvelleTentative(String message, Instant le, long seqLue) {
+		noterErreur(message, le);
+		this.consolidationSeqTraitee = Math.max(consolidationSeqTraitee, seqLue);
+		this.consolidationTentatives = 0;
+		this.consolidationProchaineTentativeLe = null;
+	}
+
+	private void noterErreur(String message, Instant le) {
 		this.consolidationErreur = Objects.requireNonNull(message, "message");
 		this.consolidationErreurLe = Objects.requireNonNull(le, "le");
 	}

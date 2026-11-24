@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import com.melas.audit_api.consolidation.ConsolidationEnCoursException;
 import com.melas.audit_api.consolidation.ConsolidationIntrouvableException;
 import com.melas.audit_api.core.AuditCoreException;
 import com.melas.audit_api.core.AuditCoreInjoignableException;
@@ -71,6 +72,11 @@ public class GestionnaireErreurs extends ResponseEntityExceptionHandler {
 			ExtractionImpossibleException.class })
 	ProblemDetail conflit(RuntimeException e) {
 		return probleme(HttpStatus.CONFLICT, "Conflit", e.getMessage());
+	}
+
+	@ExceptionHandler(ConsolidationEnCoursException.class)
+	ProblemDetail consolidationEnCours(ConsolidationEnCoursException e) {
+		return probleme(HttpStatus.CONFLICT, "Consolidation en cours", e.getMessage());
 	}
 
 	@ExceptionHandler(TypeFichierNonSupporteException.class)

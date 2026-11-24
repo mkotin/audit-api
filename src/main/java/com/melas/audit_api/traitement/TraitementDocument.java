@@ -20,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.melas.audit_api.consolidation.DemandeConsolidation;
 import com.melas.audit_api.core.AuditCoreException;
 import com.melas.audit_api.core.ClientAuditCore;
 import com.melas.audit_api.core.ReponseBrute;
@@ -97,10 +98,13 @@ class TraitementDocument {
 	private final ClientAuditCore core;
 	private final TransactionTemplate transaction;
 	private final TraitementProperties proprietes;
+	private final DemandeConsolidation demandeConsolidation;
 
 	TraitementDocument(DocumentRepository documents, ResultatOcrRepository resultatsOcr,
 			ClassificationRepository classifications, ExtractionRepository extractions, StockageFichiers stockage,
-			ClientAuditCore core, TransactionTemplate transaction, TraitementProperties proprietes) {
+			ClientAuditCore core, TransactionTemplate transaction, TraitementProperties proprietes,
+			DemandeConsolidation demandeConsolidation) {
+		this.demandeConsolidation = demandeConsolidation;
 		this.documents = documents;
 		this.resultatsOcr = resultatsOcr;
 		this.classifications = classifications;
@@ -116,6 +120,9 @@ class TraitementDocument {
 	 * déjà pris en charge entre-temps (relance explicite) ou supprimé est ignoré.
 	 */
 	void traiterSiRecu(UUID documentId) {
+		// RECU → EN_COURS ne demande pas de consolidation : audit-core lit RECU et EN_COURS de la même façon (pièce
+		// « en_cours », lecture.py, motif EN_COURS), donc le résultat ne changerait pas. Le dépôt a déjà demandé un
+		// calcul, et la fin du traitement en demandera un. À revoir si audit-core distingue un jour ces deux statuts.
 		boolean demarre = Boolean.TRUE.equals(transaction.execute(statut -> documents.findAvecVerrouById(documentId)
 				.filter(document -> document.getStatut() == StatutDocument.RECU)
 				.map(document -> {
@@ -254,6 +261,9 @@ class TraitementDocument {
 		ecrire(cle, reponse.json());
 		try {
 			transaction.executeWithoutResult(statut -> {
+				// Demande de consolidation en premier : dossier verrouillé avant le document (DemandeConsolidation) ;
+				// annulée avec la transaction si le document n'est plus EN_COURS (marquerExtrait lève une exception)
+				demandeConsolidation.demander(cible.dossierId());
 				Document document = documents.findById(cible.documentId())
 						.orElseThrow(() -> new DocumentIntrouvableException(cible.documentId()));
 				List<Alerte> alertes = new ArrayList<>(alertes(extrait.alertes()));
@@ -399,20 +409,29 @@ class TraitementDocument {
 		terminerEnErreur(documentId, message);
 	}
 
-	/** EN_COURS → ERREUR ; sans effet (signalé dans les logs) si le document n'est plus en cours ou n'existe plus. */
+	/**
+	 * EN_COURS → ERREUR, avec une demande de consolidation ; sans effet (signalé dans les logs) si le document n'est
+	 * plus en cours ou n'existe plus. Ordre des verrous (DemandeConsolidation) : le dossier, puis le document.
+	 */
 	void terminerEnErreur(UUID documentId, String message) {
 		try {
-			transaction.executeWithoutResult(statut -> documents.findAvecVerrouById(documentId).ifPresentOrElse(
-					document -> {
-						if (document.getStatut() == StatutDocument.EN_COURS) {
-							document.marquerErreur(message);
-						}
-						else {
-							log.warn("Document {} au statut {} : message d'erreur non enregistré ({})", documentId,
-									document.getStatut(), message);
-						}
-					},
-					() -> log.warn("Document {} supprimé : message d'erreur non enregistré ({})", documentId, message)));
+			transaction.executeWithoutResult(statut -> {
+				Optional<Document> verrouille = documents.findDossierIdById(documentId)
+						.filter(demandeConsolidation::verrouiller)
+						.flatMap(dossierId -> documents.findAvecVerrouById(documentId));
+				if (verrouille.isEmpty()) {
+					log.warn("Document {} supprimé : message d'erreur non enregistré ({})", documentId, message);
+					return;
+				}
+				Document document = verrouille.get();
+				if (document.getStatut() != StatutDocument.EN_COURS) {
+					log.warn("Document {} au statut {} : message d'erreur non enregistré ({})", documentId,
+							document.getStatut(), message);
+					return;
+				}
+				document.marquerErreur(message);
+				demandeConsolidation.demander(document.getDossier().getId());
+			});
 		}
 		catch (RuntimeException e) {
 			log.error("Impossible d'enregistrer l'erreur du document {} ({}) : il reste EN_COURS jusqu'à la reprise",

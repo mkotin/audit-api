@@ -11,6 +11,7 @@ import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.melas.audit_api.consolidation.DemandeConsolidation;
 import com.melas.audit_api.domain.Document;
 import com.melas.audit_api.domain.StatutDocument;
 import com.melas.audit_api.repository.DocumentRepository;
@@ -33,9 +34,11 @@ public class RepriseTraitement {
 	private final ExecutionTraitement execution;
 	private final TransactionTemplate transaction;
 	private final TraitementProperties proprietes;
+	private final DemandeConsolidation demandeConsolidation;
 
 	RepriseTraitement(DocumentRepository documents, ExecutionTraitement execution, TransactionTemplate transaction,
-			TraitementProperties proprietes) {
+			TraitementProperties proprietes, DemandeConsolidation demandeConsolidation) {
+		this.demandeConsolidation = demandeConsolidation;
 		this.documents = documents;
 		this.execution = execution;
 		this.transaction = transaction;
@@ -52,6 +55,13 @@ public class RepriseTraitement {
 	public void reprendre() {
 		List<UUID> interrompus = transaction.execute(statut -> {
 			List<Document> enCours = documents.findByStatut(StatutDocument.EN_COURS);
+			// Une demande de consolidation par dossier touché, avant de modifier les documents : dossiers verrouillés
+			// d'abord, dans un ordre fixe (identifiant croissant), puis les documents au flush (DemandeConsolidation)
+			enCours.stream()
+					.map(document -> document.getDossier().getId())
+					.distinct()
+					.sorted()
+					.forEach(demandeConsolidation::demander);
 			enCours.forEach(document -> document.marquerErreur(MESSAGE_INTERROMPU));
 			return enCours.stream().map(Document::getId).toList();
 		});

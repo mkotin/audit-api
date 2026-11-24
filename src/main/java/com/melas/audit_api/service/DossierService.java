@@ -74,7 +74,10 @@ public class DossierService {
 	 */
 	public void supprimer(UUID id) {
 		transaction.executeWithoutResult(statut -> {
-			Dossier dossier = dossierRepository.findById(id).orElseThrow(() -> new DossierIntrouvableException(id));
+			// Dossier verrouillé avant ses documents, que la suppression en cascade verrouille ensuite (ordre des
+			// verrous, voir DemandeConsolidation)
+			Dossier dossier = dossierRepository.findAvecVerrouById(id)
+					.orElseThrow(() -> new DossierIntrouvableException(id));
 			dossierRepository.delete(dossier);
 		});
 		String prefixe = CleStockage.prefixeDossier(id);

@@ -83,7 +83,20 @@ audit-core est joint à `app.core.url` (`http://localhost:8000`), avec les déla
 
 ## Consolidation du dossier
 
-audit-core (`POST /v1/consolidation`) rassemble les extractions de toutes les pièces d'un dossier en un dossier consolidé : faits, intervenants, liens entre pièces, valeur retenue, contradictions. Il constate, il ne juge pas. À ce stade, la consolidation n'est lancée qu'à la main (endpoint d'administration ci-dessous) ; le déclenchement automatique après chaque changement du dossier viendra ensuite.
+audit-core (`POST /v1/consolidation`) rassemble les extractions de toutes les pièces d'un dossier en un dossier consolidé : faits, intervenants, liens entre pièces, valeur retenue, contradictions. Il constate, il ne juge pas. La consolidation est recalculée automatiquement après chaque changement du dossier. Les décisions de l'intégration sont détaillées dans `docs/consolidation.md` d'audit-core (section « Intégration avec audit-api (étape 7) »).
+
+### Déclenchement automatique
+
+- **Demande durable.** Chaque changement qui modifie la requête envoyée à audit-core incrémente le compteur `consolidation_demande_seq` du dossier, **dans la transaction même du changement** : un arrêt de l'application ne perd aucune demande. Changements concernés : dépôt (une demande par dépôt, quel que soit le nombre de fichiers), relance du traitement ou de l'extraction, fin de traitement (`EXTRAIT` ou `ERREUR`), suppression d'un document, passage en `ERREUR` à la reprise au démarrage ou quand la file de traitement est pleine. Le démarrage automatique d'un document reçu (`RECU` → `EN_COURS`) n'en demande pas : audit-core lit ces deux statuts de la même façon. Un seul endroit incrémente le compteur : `DemandeConsolidation`, qui documente aussi l'ordre des verrous (le dossier, puis le document).
+- **Poller.** Toutes les `app.consolidation.intervalle` (2 s), une requête lit les dossiers en attente (compteur de demande plus grand que le compteur traité, nouvelle tentative éventuelle due) et les confie à un exécuteur dédié (`app.consolidation.parallelisme`, 2 ; file de `app.consolidation.taille-file`, 50), distinct de celui du traitement. Les demandes se regroupent : dix documents qui finissent ensemble donnent un ou deux calculs, pas dix.
+- **Un seul calcul à la fois par dossier**, poller et endpoint d'administration compris (celui-ci répond 409 « Consolidation en cours » plutôt que d'en lancer un second). Ensemble en mémoire : une seule instance d'audit-api est supposée.
+- **Garde-fous.** À la fin d'un calcul, le compteur traité n'avance que jusqu'au compteur lu au début : une demande arrivée pendant le calcul reste en attente et provoque un nouveau calcul. Chaque version enregistre le compteur lu ; un résultat calculé sur un compteur plus ancien que celui de la dernière version est écarté.
+- **Échecs.** Une erreur technique (audit-core injoignable, délai dépassé, 502 ou 503 d'audit-core, stockage ou base indisponible) est réessayée après un délai croissant (`app.consolidation.delais-tentatives`, 30 s, 2 min, 10 min, puis 30 min indéfiniment) ; un nouveau changement du dossier ne raccourcit pas cette attente (l'endpoint d'administration force un calcul). Toute autre erreur (400, 500 d'audit-core, réponse illisible, bug) n'est pas réessayée : la demande est marquée traitée et le prochain changement du dossier redéclenchera un calcul. Dans les deux cas, l'erreur est notée sur le dossier (statut `en_erreur`) jusqu'au succès suivant.
+- **Redémarrage.** Rien de particulier : les demandes en attente sont en base et le poller les reprend. Un calcul interrompu n'a pas avancé le compteur traité ; s'il l'a été entre l'écriture du JSON dans le stockage et l'enregistrement de la version, ce fichier reste orphelin.
+- Chaque calcul a son identifiant de corrélation (journaux, et `X-Request-ID` vers audit-core) ; le MDC est vidé après chaque tâche de l'exécuteur.
+- `app.consolidation.automatique=false` désactive le poller : les demandes s'accumulent, seul l'endpoint d'administration consolide.
+
+### Un calcul
 
 Déroulement d'un calcul, sans transaction ouverte pendant l'appel HTTP ou l'accès au stockage :
 
@@ -91,15 +104,15 @@ Déroulement d'un calcul, sans transaction ouverte pendant l'appel HTTP ou l'acc
 2. appel à audit-core (délai de lecture `app.core.delai-lecture-consolidation`, 30 s : le calcul est déterministe, sans LLM) ; empreinte SHA-256 des octets de la réponse ;
 3. si l'empreinte est celle de la dernière version, rien n'est créé ; sinon le JSON complet est écrit dans le stockage (`dossiers/{dossierId}/consolidation/{consolidationId}.json`), puis une `Consolidation` de numéro suivant (1, 2, 3…) est enregistrée sous verrou du dossier, avec les comptes et l'index des contradictions (`jsonb`). Le fichier est supprimé si la ligne n'est finalement pas créée.
 
-Un dossier sans document et jamais consolidé n'a pas de version (pas d'appel) ; un dossier qui a déjà une version et n'a plus de document en reçoit une nouvelle, sans pièce. Un échec (audit-core injoignable, trop lent, en erreur, stockage indisponible) est noté sur le dossier, sans détail technique, et effacé au succès suivant.
+Un dossier sans document et jamais consolidé n'a pas de version (pas d'appel) ; un dossier qui a déjà une version et n'a plus de document en reçoit une nouvelle, sans pièce.
+
+### Consultation
 
 - `GET /api/dossiers/{id}` : champ `consolidation` avec `statut` (`aucune`, `en_attente`, `a_jour`, `en_erreur`), `numero`, `date` et `nombreContradictions` de la dernière version.
 - `GET /api/dossiers/{id}/consolidations` : historique des versions (numéros, versions et empreintes du calcul et du domaine, comptes, durée, identifiant de corrélation), de la plus récente à la plus ancienne.
 - `GET /api/dossiers/{id}/consolidations/derniere` et `GET /api/dossiers/{id}/consolidations/{numero}` : JSON complet, tel qu'audit-core l'a renvoyé, numéro dans l'en-tête `X-Consolidation-Numero` ; 404 s'il n'existe pas.
 
 Les journaux de la consolidation ne contiennent que des comptes, des versions, des durées et des identifiants, jamais une valeur extraite.
-
-Limite connue de cette étape : le compteur de demandes du dossier (`consolidation_demande_seq`), qui écarte un résultat calculé sur un état plus ancien que la dernière version, n'est encore incrémenté par rien. Deux recalculs manuels simultanés du même dossier ne sont donc pas départagés : leurs enregistrements sont sérialisés par le verrou du dossier, et le second peut créer une version qui remplace celle du premier. C'est acceptable pour un endpoint de développement ; la règle « un seul calcul à la fois par dossier » du déclenchement automatique devra couvrir aussi cet endpoint.
 
 Contrat avec audit-core : `src/test/resources/core/consolidation_requete.json` et `consolidation_reponse.json` sont copiés d'audit-core (`tests/contrat`, dépôts clonés côte à côte) par :
 
@@ -113,7 +126,7 @@ Ils sont exclus de toute conversion de fin de ligne (`.gitattributes`) ; un test
 
 Profil `dev` uniquement :
 
-- `POST /api/admin/dossiers/{id}/consolidation` : recalcul synchrone de la consolidation ; renvoie `{"resultat": "nouvelle_version" | "inchangee" | "perimee" | "dossier_vide", "numero": …, "dureeMs": …}`. audit-core injoignable : 503 ; délai dépassé : 504 ; autre erreur d'audit-core : 502.
+- `POST /api/admin/dossiers/{id}/consolidation` : recalcul synchrone de la consolidation ; renvoie `{"resultat": "nouvelle_version" | "inchangee" | "perimee" | "dossier_vide", "numero": …, "dureeMs": …}`. Calcul déjà en cours pour ce dossier : 409. audit-core injoignable : 503 ; délai dépassé : 504 ; autre erreur d'audit-core : 502.
 
 - `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
 - `GET /api/admin/documents/{id}/ocr` et `GET /api/admin/documents/{id}/extraction` renvoient le JSON complet du dernier OCR et de la dernière extraction, tel qu'audit-core l'a produit ; 404 s'il n'y en a pas.

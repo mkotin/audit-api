@@ -19,6 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.melas.audit_api.consolidation.DemandeConsolidation;
 import com.melas.audit_api.domain.Document;
 import com.melas.audit_api.domain.Dossier;
 import com.melas.audit_api.repository.DocumentRepository;
@@ -48,16 +49,18 @@ public class DocumentService {
 	private final DetecteurTypeFichier detecteur;
 	private final TransactionTemplate transaction;
 	private final ApplicationEventPublisher evenements;
+	private final DemandeConsolidation demandeConsolidation;
 
 	public DocumentService(DossierRepository dossierRepository, DocumentRepository documentRepository,
 			StockageFichiers stockage, DetecteurTypeFichier detecteur, TransactionTemplate transaction,
-			ApplicationEventPublisher evenements) {
+			ApplicationEventPublisher evenements, DemandeConsolidation demandeConsolidation) {
 		this.dossierRepository = dossierRepository;
 		this.documentRepository = documentRepository;
 		this.stockage = stockage;
 		this.detecteur = detecteur;
 		this.transaction = transaction;
 		this.evenements = evenements;
+		this.demandeConsolidation = demandeConsolidation;
 	}
 
 	@Transactional(readOnly = true)
@@ -93,6 +96,9 @@ public class DocumentService {
 			if (!document.estSupprimable()) {
 				throw new DocumentNonSupprimableException(id, document.getStatut());
 			}
+			// Demande de consolidation, en premier : dossier verrouillé avant le document (ordre des verrous, voir
+			// DemandeConsolidation) ; annulée avec la transaction si la suppression est refusée.
+			demandeConsolidation.demander(document.getDossier().getId());
 			// Suppression conditionnelle : si le statut a changé depuis la lecture (prise en charge par le
 			// traitement), rien n'est supprimé et la relecture donne la raison.
 			if (documentRepository.supprimerSiStatutParmi(id, Document.STATUTS_SUPPRIMABLES) == 0) {
@@ -201,6 +207,8 @@ public class DocumentService {
 	private List<Document> enregistrer(UUID dossierId, List<Document> documents, List<FichierValide> fichiers) {
 		try {
 			return transaction.execute(statut -> {
+				// Une seule demande de consolidation par dépôt, en premier (ordre des verrous : DemandeConsolidation)
+				demandeConsolidation.demander(dossierId);
 				Dossier dossier = dossierRepository.findById(dossierId)
 						.orElseThrow(() -> new DossierIntrouvableException(dossierId));
 				documents.forEach(dossier::ajouterDocument);

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.melas.audit_api.consolidation.DemandeConsolidation;
 import com.melas.audit_api.domain.Classification;
 import com.melas.audit_api.domain.Document;
 import com.melas.audit_api.domain.Extraction;
@@ -46,10 +47,13 @@ public class TraitementService {
 	private final StockageFichiers stockage;
 	private final ExecutionTraitement execution;
 	private final TransactionTemplate transaction;
+	private final DemandeConsolidation demandeConsolidation;
 
 	TraitementService(DocumentRepository documents, ResultatOcrRepository resultatsOcr,
 			ClassificationRepository classifications, ExtractionRepository extractions, ChampExtraitRepository champs,
-			StockageFichiers stockage, ExecutionTraitement execution, TransactionTemplate transaction) {
+			StockageFichiers stockage, ExecutionTraitement execution, TransactionTemplate transaction,
+			DemandeConsolidation demandeConsolidation) {
+		this.demandeConsolidation = demandeConsolidation;
 		this.documents = documents;
 		this.resultatsOcr = resultatsOcr;
 		this.classifications = classifications;
@@ -100,9 +104,15 @@ public class TraitementService {
 		log.info("Extraction du document {} relancée", id);
 	}
 
-	/** Vérifie les conditions puis fait passer le document EN_COURS, dans une transaction et sous verrou. */
+	/**
+	 * Vérifie les conditions puis fait passer le document EN_COURS, dans une transaction et sous verrou. La demande
+	 * de consolidation vient en premier (dossier verrouillé avant le document, voir DemandeConsolidation) ; elle est
+	 * annulée avec la transaction si la relance est refusée.
+	 */
 	private void demarrer(UUID id, Consumer<Document> verification) {
 		transaction.executeWithoutResult(statut -> {
+			demandeConsolidation.demander(
+					documents.findDossierIdById(id).orElseThrow(() -> new DocumentIntrouvableException(id)));
 			Document document = documents.findAvecVerrouById(id).orElseThrow(() -> new DocumentIntrouvableException(id));
 			if (document.getStatut() == StatutDocument.EN_COURS) {
 				throw new TraitementEnCoursException(id);
@@ -118,9 +128,15 @@ public class TraitementService {
 		}
 		catch (TaskRejectedException e) {
 			log.warn("File de traitement pleine : le document {} passe en ERREUR", id);
-			transaction.executeWithoutResult(statut -> documents.findAvecVerrouById(id)
-					.filter(document -> document.getStatut() == StatutDocument.EN_COURS)
-					.ifPresent(document -> document.marquerErreur(MESSAGE_FILE_PLEINE)));
+			// Dossier verrouillé, puis document ; la demande seulement s'il passe vraiment en ERREUR
+			transaction.executeWithoutResult(statut -> documents.findDossierIdById(id)
+					.filter(demandeConsolidation::verrouiller)
+					.ifPresent(dossierId -> documents.findAvecVerrouById(id)
+							.filter(document -> document.getStatut() == StatutDocument.EN_COURS)
+							.ifPresent(document -> {
+								document.marquerErreur(MESSAGE_FILE_PLEINE);
+								demandeConsolidation.demander(dossierId);
+							})));
 			throw new FileTraitementPleineException(id);
 		}
 	}

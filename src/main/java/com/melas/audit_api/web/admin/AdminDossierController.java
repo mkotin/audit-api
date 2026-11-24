@@ -41,8 +41,8 @@ public class AdminDossierController {
 
 	/**
 	 * Force un recalcul synchrone de la consolidation : nouvelle version, résultat inchangé (même empreinte), résultat
-	 * périmé, ou dossier vide jamais consolidé. audit-core injoignable : 503 ; délai dépassé : 504 ; autre erreur
-	 * d'audit-core : 502.
+	 * périmé, ou dossier vide jamais consolidé. Calcul déjà en cours pour ce dossier (poller ou autre appel) : 409,
+	 * sans second calcul. audit-core injoignable : 503 ; délai dépassé : 504 ; autre erreur d'audit-core : 502.
 	 */
 	@PostMapping("/{id}/consolidation")
 	public ResultatConsolidationResponse consolider(@PathVariable UUID id) {

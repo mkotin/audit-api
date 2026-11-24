@@ -12,6 +12,9 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,8 +23,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.melas.audit_api.consolidation.ConstructionRequete.Construction;
 import com.melas.audit_api.consolidation.ResultatConsolidation.Issue;
 import com.melas.audit_api.core.AuditCoreException;
+import com.melas.audit_api.core.AuditCoreInjoignableException;
 import com.melas.audit_api.core.ClientAuditCore;
 import com.melas.audit_api.core.Correlation;
+import com.melas.audit_api.core.DelaiDepasseException;
 import com.melas.audit_api.core.ReponseBrute;
 import com.melas.audit_api.core.dto.ReponseConsolidation;
 import com.melas.audit_api.domain.Consolidation;
@@ -50,12 +55,20 @@ import com.melas.audit_api.stockage.StockageFichiers;
  * version suivante est enregistrée. Le JSON est supprimé du stockage s'il n'est finalement pas référencé.</li>
  * </ol>
  *
- * <p><b>À l'étape 7c, le garde-fou par compteur n'est pas encore effectif</b> : rien n'incrémente
- * {@code consolidation_demande_seq} (ce sera fait dans la transaction de chaque changement du dossier, en 7d). Deux
- * recalculs manuels simultanés du même dossier ne sont donc pas départagés par lui : le verrou du dossier sérialise
- * seulement leurs enregistrements, et le second peut remplacer (par une nouvelle version) le résultat du premier
- * s'ils diffèrent. C'est acceptable pour un endpoint de développement. <b>Pour 7d</b> : la règle « un seul calcul à
- * la fois par dossier » devra couvrir aussi l'endpoint d'administration, pas seulement le poller.
+ * <p>Le compteur lu ({@code consolidation_demande_seq}, incrémenté par {@link DemandeConsolidation} dans la
+ * transaction de chaque changement) l'est dans la première requête de la construction : les requêtes suivantes voient
+ * des données aussi récentes ou plus récentes, jamais plus anciennes. Une donnée plus récente que le compteur lu a
+ * son propre incrément, plus grand : sa demande reste en attente et sera recalculée.
+ *
+ * <p>Un seul calcul à la fois par dossier ({@link ConsolidationsEnCours}), qu'il vienne du poller
+ * ({@link PollerConsolidation}) ou de l'endpoint d'administration ({@link #consolider}).
+ *
+ * <p>Échecs : une erreur technique (audit-core injoignable, délai dépassé, 502 ou 503 d'audit-core, stockage ou base
+ * indisponible) laisse la demande en attente, avec une nouvelle tentative après un délai croissant
+ * ({@code app.consolidation.delais-tentatives}). Toute autre erreur (requête refusée, erreur interne d'audit-core,
+ * réponse illisible, bug) se reproduirait à l'identique : la demande est marquée traitée, sans nouvelle tentative,
+ * et le prochain changement du dossier redéclenchera un calcul. Dans les deux cas, l'erreur est notée sur le dossier
+ * jusqu'au succès suivant.
  *
  * <p>Les journaux ne contiennent que des comptes, des versions, des durées et des identifiants, jamais une valeur
  * extraite (noms, adresses, montants : données personnelles de sinistres).
@@ -80,26 +93,45 @@ public class ConsolidationService {
 	private final DossierRepository dossiers;
 	private final StockageFichiers stockage;
 	private final TransactionTemplate transaction;
+	private final ConsolidationsEnCours enCours;
+	private final ConsolidationProperties proprietes;
 
 	ConsolidationService(ConstructionRequete construction, ClientAuditCore core, ConsolidationRepository consolidations,
-			DossierRepository dossiers, StockageFichiers stockage, TransactionTemplate transaction) {
+			DossierRepository dossiers, StockageFichiers stockage, TransactionTemplate transaction,
+			ConsolidationsEnCours enCours, ConsolidationProperties proprietes) {
 		this.construction = construction;
 		this.core = core;
 		this.consolidations = consolidations;
 		this.dossiers = dossiers;
 		this.stockage = stockage;
 		this.transaction = transaction;
+		this.enCours = enCours;
+		this.proprietes = proprietes;
 	}
 
 	/**
-	 * Consolide le dossier, de façon synchrone. Un échec (audit-core ou stockage) est noté sur le dossier, puis
+	 * Consolide le dossier, de façon synchrone (endpoint d'administration). Un échec est noté sur le dossier, puis
 	 * l'exception remonte.
 	 *
+	 * @throws ConsolidationEnCoursException si un calcul du dossier est déjà en cours (poller ou administration)
 	 * @throws DossierIntrouvableException si le dossier n'existe pas
 	 * @throws AuditCoreException si audit-core est injoignable, trop lent ou répond une erreur
 	 * @throws StockageException si le stockage est indisponible
 	 */
 	public ResultatConsolidation consolider(UUID dossierId) {
+		if (!enCours.reserver(dossierId)) {
+			throw new ConsolidationEnCoursException(dossierId);
+		}
+		try {
+			return consoliderDossierReserve(dossierId);
+		}
+		finally {
+			enCours.liberer(dossierId);
+		}
+	}
+
+	/** Consolide un dossier déjà réservé dans {@link ConsolidationsEnCours} par l'appelant (poller). */
+	ResultatConsolidation consoliderDossierReserve(UUID dossierId) {
 		String correlation = UUID.randomUUID().toString().replace("-", "");
 		MDC.put(Correlation.CLE_MDC, correlation);
 		MDC.put(CLE_MDC_DOSSIER, dossierId.toString());
@@ -162,15 +194,69 @@ public class ConsolidationService {
 			});
 			return new ResultatConsolidation(enregistrement.issue(), enregistrement.numero(), dureeMs);
 		}
-		catch (AuditCoreException e) {
-			noterEchec(dossierId, "Consolidation impossible : " + e.getTitre());
-			log.warn("Consolidation du dossier {} en erreur : {}", dossierId, e.getMessage());
+		catch (RuntimeException e) {
+			noterEchec(dossierId, seqLue, e);
 			throw e;
 		}
-		catch (StockageException e) {
-			noterEchec(dossierId, "Consolidation impossible : stockage des fichiers indisponible");
-			log.error("Consolidation du dossier {} en erreur : stockage", dossierId, e);
-			throw e;
+	}
+
+	/**
+	 * Erreur technique, qui peut disparaître d'elle-même (nouvelle tentative différée), ou erreur qui se reproduirait
+	 * à l'identique (pas de nouvelle tentative).
+	 */
+	static boolean estTechnique(RuntimeException e) {
+		return switch (e) {
+			case AuditCoreInjoignableException ignore -> true;
+			case DelaiDepasseException ignore -> true;
+			case AuditCoreException erreur -> erreur.getStatut() != null
+					&& (erreur.getStatut() == 502 || erreur.getStatut() == 503);
+			case StockageException ignore -> true;
+			case TransientDataAccessException ignore -> true;
+			case RecoverableDataAccessException ignore -> true;
+			case CannotCreateTransactionException ignore -> true;
+			default -> false;
+		};
+	}
+
+	/** Message noté sur le dossier : titre court, sans détail technique. */
+	private static String message(RuntimeException e) {
+		return "Consolidation impossible : " + switch (e) {
+			case AuditCoreException erreur -> erreur.getTitre();
+			case StockageException ignore -> "stockage des fichiers indisponible";
+			case TransientDataAccessException ignore -> "base de données indisponible";
+			case RecoverableDataAccessException ignore -> "base de données indisponible";
+			case CannotCreateTransactionException ignore -> "base de données indisponible";
+			default -> "erreur interne";
+		};
+	}
+
+	/** Note l'échec sur le dossier ; sans effet (signalé) si cet enregistrement échoue lui-même. */
+	private void noterEchec(UUID dossierId, long seqLue, RuntimeException e) {
+		String message = message(e);
+		boolean technique = estTechnique(e);
+		if (e instanceof AuditCoreException erreur) {
+			log.warn("Consolidation du dossier {} en erreur ({}) : {}", dossierId,
+					technique ? "nouvelle tentative différée" : "pas de nouvelle tentative", erreur.getMessage());
+		}
+		else {
+			log.error("Consolidation du dossier {} en erreur ({})", dossierId,
+					technique ? "nouvelle tentative différée" : "pas de nouvelle tentative", e);
+		}
+		try {
+			transaction.executeWithoutResult(statut -> dossiers.findAvecVerrouById(dossierId).ifPresent(dossier -> {
+				Instant maintenant = Instant.now();
+				if (technique) {
+					dossier.consolidationEchoueeTechnique(message, maintenant,
+							proprietes.attenteAvant(dossier.getConsolidationTentatives() + 1));
+				}
+				else {
+					dossier.consolidationEchoueeSansNouvelleTentative(message, maintenant, seqLue);
+				}
+			}));
+		}
+		catch (RuntimeException echec) {
+			log.error("Impossible d'enregistrer l'échec de consolidation du dossier {} ({})", dossierId, message, echec);
+			e.addSuppressed(echec);
 		}
 	}
 
@@ -215,17 +301,6 @@ public class ConsolidationService {
 	private void enregistrerSucces(UUID dossierId, long seqLue) {
 		transaction.executeWithoutResult(statut -> dossiers.findAvecVerrouById(dossierId)
 				.ifPresent(dossier -> dossier.consolidationReussie(seqLue)));
-	}
-
-	/** Note l'échec sur le dossier ; sans effet (signalé) si cet enregistrement échoue lui-même. */
-	private void noterEchec(UUID dossierId, String message) {
-		try {
-			transaction.executeWithoutResult(statut -> dossiers.findAvecVerrouById(dossierId)
-					.ifPresent(dossier -> dossier.consolidationEchouee(message, Instant.now())));
-		}
-		catch (RuntimeException e) {
-			log.error("Impossible d'enregistrer l'échec de consolidation du dossier {} ({})", dossierId, message, e);
-		}
 	}
 
 	/** Comptes, version, taille et durée seulement : jamais de valeur extraite (données personnelles de sinistres). */

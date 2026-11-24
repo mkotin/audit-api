@@ -99,6 +99,19 @@ public abstract class TraitementTestSupport extends ApiTestSupport {
 				.withBody(fixture(fixture))));
 	}
 
+	/**
+	 * PDF minimal rendu unique par un commentaire PDF ajouté en fin de fichier : plusieurs fichiers d'un même dossier
+	 * (un même contenu n'y est accepté qu'une fois).
+	 */
+	protected static Fichier pdfUnique(String nom) {
+		byte[] base = pdf().contenu();
+		byte[] suffixe = ("\n%" + UUID.randomUUID() + "\n").getBytes(StandardCharsets.US_ASCII);
+		byte[] contenu = new byte[base.length + suffixe.length];
+		System.arraycopy(base, 0, contenu, 0, base.length);
+		System.arraycopy(suffixe, 0, contenu, base.length, suffixe.length);
+		return new Fichier(nom, "application/pdf", contenu);
+	}
+
 	/** Dépose un PDF dans un nouveau dossier et renvoie l'identifiant du document créé. */
 	protected String deposerUnPdf() {
 		return JsonPath.read(deposer(creerDossierEtRenvoyerId(), pdf()).getBody(), "$[0].id");

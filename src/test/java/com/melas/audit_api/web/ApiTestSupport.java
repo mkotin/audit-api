@@ -40,7 +40,7 @@ import software.amazon.awssdk.services.s3.model.S3Object;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)
-@TestPropertySource(properties = "app.traitement.automatique=false")
+@TestPropertySource(properties = { "app.traitement.automatique=false", "app.consolidation.automatique=false" })
 public abstract class ApiTestSupport {
 
 	@LocalServerPort
