@@ -143,6 +143,12 @@ audit-core évalue la consolidation hors ligne (`.\scripts\dev.ps1 eval-consolid
 
 Les fichiers sont écrits dans `../audit-core/benchmarks/consolidation/requetes/` (non versionné : ils contiennent les valeurs extraites), d'où `.\scripts\dev.ps1 eval-consolidation --requetes benchmarks/consolidation/requetes` les lit. La référence du dossier doit contenir le nom du dossier du jeu de test (`dossier_004`), et les fichiers déposés garder leur nom (`dossier_004_doc03.pdf`) : c'est le cas des dossiers créés par le script d'essai d'audit-infra.
 
+### Points ouverts
+
+- **Fichiers orphelins dans le stockage** : le JSON d'une consolidation dont l'enregistrement a échoué, et dont la suppression a aussi échoué, ou écrit juste avant un arrêt de l'application, reste dans le stockage. Il est signalé dans les journaux, mais aucun nettoyage périodique ne le retire.
+- **Champ legacy `Dossier.domaine`** : plus utilisé (comme `typeSinistre`, retiré par la migration V4), à retirer par une migration.
+- **Une seule instance** : le déclenchement et la reprise du traitement la supposent ; plusieurs instances demanderont un bail (ADR 0004 d'audit-core).
+
 ## Administration et développement
 
 Profil `dev` uniquement :
