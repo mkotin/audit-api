@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -51,12 +52,24 @@ class PollerConsolidationTest extends ConsolidationTestSupport {
 		chargerDossierContrat();
 	}
 
+	/**
+	 * Aucun calcul ne survit à son test : sinon, un calcul lent (Docker chargé) enregistrerait son résultat dans le
+	 * dossier du contrat rechargé par le test suivant, sous le même identifiant, et fausserait ses compteurs.
+	 */
+	@AfterEach
+	void attendreLaFinDesCalculs() {
+		if (!core.isRunning()) {
+			core.start();
+		}
+		attendreFinDuCalcul();
+	}
+
 	private void demander() {
 		transaction.executeWithoutResult(statut -> demande.demander(DOSSIER_CONTRAT));
 	}
 
 	private void attendreFinDuCalcul() {
-		await().atMost(Duration.ofSeconds(15)).pollInterval(Duration.ofMillis(50))
+		await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(50))
 				.until(() -> !enCours.estEnCours(DOSSIER_CONTRAT));
 	}
 
