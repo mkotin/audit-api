@@ -68,6 +68,11 @@ class ConsolidationApiTest extends ConsolidationTestSupport {
 		ResponseEntity<String> injoignable = recalculer(DOSSIER_CONTRAT);
 		assertThat(injoignable.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 		assertThat(JsonPath.<String>read(injoignable.getBody(), "$.detail")).isEqualTo("audit-core injoignable");
+
+		// Un calcul par appel : trois échecs techniques (504, délai dépassé, injoignable), le 500 n'en étant pas un.
+		// Avec un client HTTP qui rejoue les POST reçus en 503, l'appel « injoignable » aurait compté deux fois.
+		assertThat(jdbc.queryForObject("SELECT consolidation_tentatives FROM dossier WHERE id = ?", Integer.class,
+				DOSSIER_CONTRAT)).isEqualTo(3);
 	}
 
 	@Test

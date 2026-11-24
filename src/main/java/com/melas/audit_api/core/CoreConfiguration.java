@@ -33,6 +33,13 @@ class CoreConfiguration {
 		return client(proprietes, proprietes.delaiLectureConsolidation());
 	}
 
+	/**
+	 * Client du JDK, explicitement : il ne rejoue jamais un POST de lui-même (ni après un statut 503 ou 429, ni après
+	 * une coupure de connexion, tant que jdk.httpclient.enableAllMethodRetry n'est pas activé). Ne pas retirer cette
+	 * fabrique : Apache HttpClient 5 est présent en production (dépendance du SDK S3), Spring le choisirait par défaut,
+	 * et il rejoue une requête, même un POST, qui reçoit 503 ou 429. Un POST d'extraction rejoué serait un appel au LLM
+	 * payé deux fois. Seules nos propres règles décident d'un nouvel appel (ClientAuditCoreSansNouvelleTentativeTest).
+	 */
 	private static RestClient client(CoreProperties proprietes, Duration delaiLecture) {
 		HttpClient client = HttpClient.newBuilder()
 				.version(HttpClient.Version.HTTP_1_1)

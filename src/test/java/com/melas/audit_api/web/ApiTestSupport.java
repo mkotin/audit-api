@@ -3,6 +3,7 @@ package com.melas.audit_api.web;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.http.HttpClient;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -16,6 +17,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -68,6 +70,11 @@ public abstract class ApiTestSupport {
 	protected void initialiserClient() {
 		client = RestClient.builder()
 				.baseUrl("http://localhost:" + port)
+				// Client du JDK, en HTTP/1.1 : sans nouvelle tentative automatique. Par défaut, Spring choisirait Apache
+				// HttpClient 5 (présent via le SDK S3), qui rejoue une requête, même un POST, recevant 503 ou 429 :
+				// un test croirait envoyer une requête, et en enverrait deux.
+				.requestFactory(new JdkClientHttpRequestFactory(
+						HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()))
 				// Les tests inspectent eux-mêmes les statuts d'erreur.
 				.defaultStatusHandler(statut -> true, (requete, reponse) -> {
 				})

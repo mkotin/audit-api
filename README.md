@@ -46,6 +46,8 @@ docker compose --profile infra down -v
 
 Les tests utilisent leur propre PostgreSQL et leur propre stockage S3 via Testcontainers ; Docker doit être lancé. audit-core est simulé par WireMock, avec de vraies réponses d'audit-core capturées sur la facture `dossier_001_doc03` du jeu de test (`src/test/resources/core`).
 
+Le client HTTP des tests, comme celui d'audit-core en production, est celui du JDK : il ne rejoue jamais une requête de lui-même. Apache HttpClient 5, présent par le SDK S3 et que Spring choisirait par défaut, rejoue une requête (même un POST) qui reçoit 503 ou 429 : en production, un POST d'extraction rejoué serait un appel au LLM payé deux fois (`ClientAuditCoreSansNouvelleTentativeTest`).
+
 ## Image Docker
 
 Le `Dockerfile` (multi-étapes : construction Maven, puis JRE seul, utilisateur non root) est utilisé par le service `api` du profil `full` d'audit-infra : `docker compose --profile full up -d --build` depuis `../audit-infra` lance tout le système.

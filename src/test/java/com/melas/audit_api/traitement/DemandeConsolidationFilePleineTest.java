@@ -4,7 +4,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
 
@@ -35,8 +34,6 @@ class DemandeConsolidationFilePleineTest extends TraitementTestSupport {
 	@Autowired
 	private TransactionTemplate transaction;
 
-	@Autowired
-	private TraitementService service;
 
 	private String documentEnBase(String dossierId) {
 		UUID id = UUID.randomUUID();
@@ -68,10 +65,9 @@ class DemandeConsolidationFilePleineTest extends TraitementTestSupport {
 				.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
 		assertThat(demandes(dossierId)).isEqualTo(1);
 
-		// Appel direct, pas par HTTP : le client HTTP des tests (Apache HttpClient 5) réessaie de lui-même, après 1 s,
-		// une requête qui reçoit un 503, même un POST ; la relance serait alors faite deux fois.
-		assertThatThrownBy(() -> service.relancerTraitement(uuid(refuse)))
-				.isInstanceOf(FileTraitementPleineException.class);
+		// Le client HTTP des tests ne rejoue pas une requête reçue en 503 (ApiTestSupport) : une seule relance
+		assertThat(client.post().uri("/api/documents/{id}/traitement", refuse).retrieve().toBodilessEntity()
+				.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 
 		assertThat(JsonPath.<String>read(document(refuse), "$.statut")).isEqualTo("ERREUR");
 		// relance du premier (1), relance du second (1), passage du second en ERREUR (1)
