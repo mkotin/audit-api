@@ -48,6 +48,15 @@ Les tests utilisent leur propre PostgreSQL et leur propre stockage S3 via Testco
 
 Le client HTTP des tests, comme celui d'audit-core en production, est celui du JDK : il ne rejoue jamais une requête de lui-même. Apache HttpClient 5, présent par le SDK S3 et que Spring choisirait par défaut, rejoue une requête (même un POST) qui reçoit 503 ou 429 : en production, un POST d'extraction rejoué serait un appel au LLM payé deux fois (`ClientAuditCoreSansNouvelleTentativeTest`).
 
+### Test de bout en bout de la consolidation
+
+```bash
+docker build -t audit-core ../audit-core     # image audit-core:latest, à reconstruire après toute modification d'audit-core
+./mvnw test -Pbout-en-bout
+```
+
+`ConsolidationBoutEnBoutTest` (étiquette `bout-en-bout`, exclue de `./mvnw test`) démarre la **vraie image `audit-core:latest`** (sans LLM), avec PostgreSQL et S3. Il injecte en base les extractions de dossiers du jeu de test à partir de leur vérité terrain canonique (`../dataset/data/canonique`, ou `AUDIT_DATASET` vers le dossier `data`), un document par transaction avec sa demande de consolidation, comme les fins de traitement d'un dépôt groupé. Il vérifie : un seul calcul pour toutes ces demandes, pas de nouvelle version au calcul suivant, l'adresse retenue juste dans les dossiers 004 et 009, le constat du dossier 008 rattaché au tiers. Image absente ou trop ancienne, jeu de test introuvable : échec avec un message qui dit quoi faire. L'essai sur de vraies extractions (LLM) est un script d'audit-infra (`scripts/essai-consolidation.ps1`).
+
 ## Image Docker
 
 Le `Dockerfile` (multi-étapes : construction Maven, puis JRE seul, utilisateur non root) est utilisé par le service `api` du profil `full` d'audit-infra : `docker compose --profile full up -d --build` depuis `../audit-infra` lance tout le système.

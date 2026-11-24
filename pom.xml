@@ -32,6 +32,8 @@
 		<tika.version>4.1.0</tika.version>
 		<springdoc.version>3.1.1</springdoc.version>
 		<wiremock.version>3.13.1</wiremock.version>
+		<!-- Tests exclus de ./mvnw test : bout-en-bout (vraie image audit-core, lent), lancés par -Pbout-en-bout -->
+		<tests.exclus>bout-en-bout</tests.exclus>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -217,7 +219,38 @@
 					</execution>
 				</executions>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<excludedGroups>${tests.exclus}</excludedGroups>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!--
+			./mvnw test -Pbout-en-bout : seulement les tests étiquetés bout-en-bout (consolidation avec la vraie image
+			audit-core:latest, à construire d'abord : docker build -t audit-core ../audit-core).
+		-->
+		<profile>
+			<id>bout-en-bout</id>
+			<properties>
+				<tests.exclus>aucun</tests.exclus>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<groups>bout-en-bout</groups>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>
