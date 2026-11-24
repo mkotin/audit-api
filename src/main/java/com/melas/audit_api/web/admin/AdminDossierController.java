@@ -4,7 +4,9 @@ import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,6 +49,16 @@ public class AdminDossierController {
 	@PostMapping("/{id}/consolidation")
 	public ResultatConsolidationResponse consolider(@PathVariable UUID id) {
 		return ResultatConsolidationResponse.depuis(consolidationService.consolider(id));
+	}
+
+	/**
+	 * Requête de consolidation du dossier, telle qu'elle serait envoyée à audit-core (POST /v1/consolidation, mêmes
+	 * octets), sans l'envoyer : entrée de l'évaluation hors ligne d'audit-core sur de vraies extractions
+	 * (scripts/exporter-requetes-consolidation.ps1). 404 si le dossier n'existe pas.
+	 */
+	@GetMapping(path = "/{id}/consolidation/requete", produces = MediaType.APPLICATION_JSON_VALUE)
+	public byte[] requeteConsolidation(@PathVariable UUID id) {
+		return consolidationService.requete(id);
 	}
 
 }

@@ -29,6 +29,7 @@ import com.melas.audit_api.core.Correlation;
 import com.melas.audit_api.core.DelaiDepasseException;
 import com.melas.audit_api.core.ReponseBrute;
 import com.melas.audit_api.core.dto.ReponseConsolidation;
+import com.melas.audit_api.core.dto.RequeteConsolidation;
 import com.melas.audit_api.domain.Consolidation;
 import com.melas.audit_api.domain.ContradictionIndexee;
 import com.melas.audit_api.domain.Dossier;
@@ -385,6 +386,20 @@ public class ConsolidationService {
 	}
 
 	public record VersionJson(int numero, byte[] json) {
+	}
+
+	/**
+	 * Requête de consolidation construite pour le dossier, telle qu'elle serait envoyée à audit-core (mêmes octets),
+	 * sans l'envoyer : pour l'évaluation hors ligne de la consolidation sur de vraies extractions.
+	 *
+	 * @throws DossierIntrouvableException si le dossier n'existe pas
+	 */
+	public byte[] requete(UUID dossierId) {
+		RequeteConsolidation requete = transaction.execute(statut -> {
+			statut.setRollbackOnly();
+			return construction.construire(dossierId).requete();
+		});
+		return core.corpsDeConsolidation(requete);
 	}
 
 	private void verifierDossier(UUID dossierId) {

@@ -77,7 +77,7 @@ public class ClientAuditCore {
 	 * empreinte décide d'une nouvelle version. Une réponse pour un autre dossier que celui demandé est refusée.
 	 */
 	public ReponseBrute<ReponseConsolidation> consolider(RequeteConsolidation requete) {
-		byte[] corps = appeler(Appel.CONSOLIDATION, requete);
+		byte[] corps = appeler(Appel.CONSOLIDATION, corpsDeConsolidation(requete));
 		ReponseConsolidation reponse = lire(Appel.CONSOLIDATION, corps, ReponseConsolidation.class);
 		if (!requete.dossierId().equals(reponse.dossierId())) {
 			throw new AuditCoreErreurException("Réponse d'audit-core pour un autre dossier",
@@ -106,6 +106,14 @@ public class ClientAuditCore {
 		return new ReponseBrute<>(lire(Appel.EXTRACTION, corps, DocumentExtrait.class), corps);
 	}
 
+	/**
+	 * Octets exacts du corps de POST /v1/consolidation pour cette requête (JSON d'audit-core, snake_case) : ceux que
+	 * {@link #consolider} envoie, et que l'administration exporte pour l'évaluation hors ligne d'audit-core.
+	 */
+	public byte[] corpsDeConsolidation(RequeteConsolidation requete) {
+		return json.writeValueAsBytes(requete);
+	}
+
 	private byte[] appeler(Appel appel, Object requete) {
 		long debut = System.nanoTime();
 		ReponseHttp reponse;
@@ -115,7 +123,7 @@ public class ClientAuditCore {
 					.uri(appel.chemin)
 					.contentType(MediaType.APPLICATION_JSON)
 					.accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_PROBLEM_JSON)
-					.body(json.writeValueAsBytes(requete))
+					.body(requete instanceof byte[] octets ? octets : json.writeValueAsBytes(requete))
 					.exchange((req, res) -> new ReponseHttp(res.getStatusCode().value(), res.getBody().readAllBytes()));
 		}
 		catch (ResourceAccessException e) {

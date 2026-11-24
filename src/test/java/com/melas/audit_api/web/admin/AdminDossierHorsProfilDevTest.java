@@ -35,10 +35,12 @@ class AdminDossierHorsProfilDevTest extends ApiTestSupport {
 	}
 
 	@Test
-	void laRouteDeRecalculDeLaConsolidationRepond404() {
+	void lesRoutesDAdministrationDeLaConsolidationRepondent404() {
 		String dossierId = creerDossierEtRenvoyerId();
 
 		assertThat(client.post().uri("/api/admin/dossiers/{id}/consolidation", dossierId).retrieve()
+				.toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+		assertThat(client.get().uri("/api/admin/dossiers/{id}/consolidation/requete", dossierId).retrieve()
 				.toBodilessEntity().getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 	}
 

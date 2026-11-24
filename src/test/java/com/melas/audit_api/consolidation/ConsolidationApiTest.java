@@ -138,4 +138,24 @@ class ConsolidationApiTest extends ConsolidationTestSupport {
 				.isEqualTo(HttpStatus.NOT_FOUND);
 	}
 
+	@Test
+	void laRequeteExporteeEstCelleQuiEstEnvoyeeAAuditCore() {
+		ResponseEntity<byte[]> exportee = json("/api/admin/dossiers/{id}/consolidation/requete", DOSSIER_CONTRAT);
+
+		assertThat(exportee.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(JSON.readTree(exportee.getBody())).isEqualTo(requeteContrat());
+		// mêmes octets que le corps réellement envoyé à audit-core
+		simulerConsolidation(reponseContrat());
+		recalculer(DOSSIER_CONTRAT);
+		byte[] envoyee = core.findAll(com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
+				urlEqualTo(CHEMIN))).getFirst().getBody();
+		assertThat(exportee.getBody()).isEqualTo(envoyee);
+	}
+
+	@Test
+	void laRequeteDUnDossierInconnuRepond404() {
+		assertThat(json("/api/admin/dossiers/{id}/consolidation/requete", UUID.randomUUID()).getStatusCode())
+				.isEqualTo(HttpStatus.NOT_FOUND);
+	}
+
 }

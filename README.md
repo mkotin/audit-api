@@ -133,11 +133,22 @@ Contrat avec audit-core : `src/test/resources/core/consolidation_requete.json` e
 
 Ils sont exclus de toute conversion de fin de ligne (`.gitattributes`) ; un test vérifie qu'ils sont identiques, à l'octet près, à ceux d'audit-core.
 
+### Évaluation sur de vraies extractions
+
+audit-core évalue la consolidation hors ligne (`.\scripts\dev.ps1 eval-consolidation`, voir `docs/consolidation.md` d'audit-core). Pour la mesurer sur de **vraies extractions**, audit-api exporte la requête de consolidation de chaque dossier, telle qu'il l'enverrait à audit-core (mêmes octets), avec le profil `dev` :
+
+```powershell
+.\scripts\exporter-requetes-consolidation.ps1 -References ESSAI-dossier_004-20261124-101500, ESSAI-dossier_008-20261124-101500
+```
+
+Les fichiers sont écrits dans `../audit-core/benchmarks/consolidation/requetes/` (non versionné : ils contiennent les valeurs extraites), d'où `.\scripts\dev.ps1 eval-consolidation --requetes benchmarks/consolidation/requetes` les lit. La référence du dossier doit contenir le nom du dossier du jeu de test (`dossier_004`), et les fichiers déposés garder leur nom (`dossier_004_doc03.pdf`) : c'est le cas des dossiers créés par le script d'essai d'audit-infra.
+
 ## Administration et développement
 
 Profil `dev` uniquement :
 
 - `POST /api/admin/dossiers/{id}/consolidation` : recalcul synchrone de la consolidation ; renvoie `{"resultat": "nouvelle_version" | "inchangee" | "perimee" | "dossier_vide", "numero": …, "dureeMs": …}`. Calcul déjà en cours pour ce dossier : 409. audit-core injoignable : 503 ; délai dépassé : 504 ; autre erreur d'audit-core : 502.
+- `GET /api/admin/dossiers/{id}/consolidation/requete` : la requête de consolidation du dossier, telle qu'elle serait envoyée à audit-core (mêmes octets), sans l'envoyer ; 404 si le dossier n'existe pas. Entrée de l'évaluation hors ligne d'audit-core (`scripts/exporter-requetes-consolidation.ps1`).
 
 - `DELETE /api/admin/dossiers/{id}` supprime le dossier, tous ses documents quel que soit leur statut, leurs champs extraits, et tous les fichiers sous `dossiers/{id}/` dans le stockage (orphelins compris).
 - `GET /api/admin/documents/{id}/ocr` et `GET /api/admin/documents/{id}/extraction` renvoient le JSON complet du dernier OCR et de la dernière extraction, tel qu'audit-core l'a produit ; 404 s'il n'y en a pas.
